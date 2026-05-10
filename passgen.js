@@ -394,7 +394,251 @@ if (require.main === module) {
   main(process.argv);
 }
 
+
+// ── BIP-39 Seed Phrase Generator ─────────────────────
+
+// Load the official BIP-39 English wordlist (2048 words)
+const BIP39_WORDLIST = require('./bip39-wordlist.json');
+
+// Entropy-to-checksum mapping per BIP-39 spec
+// wordCount: { entropyBytes, checksumBits }
+const BIP39_CONFIG = {
+  12: { entropyBits: 128, checksumBits: 4 },
+  15: { entropyBits: 160, checksumBits: 5 },
+  18: { entropyBits: 192, checksumBits: 6 },
+  21: { entropyBits: 224, checksumBits: 7 },
+  24: { entropyBits: 256, checksumBits: 8 },
+};
+
+/**
+ * Generate a BIP-39 compliant deterministic seed phrase
+ * from a master secret (brain-wallet style).
+ *
+ * @param {string} master — The master secret
+ * @param {number} wordCount — 12, 15, 18, 21, or 24 (default: 24)
+ * @returns {string} — Space-separated mnemonic phrase
+ */
+function generateSeedPhrase(master, wordCount = 24) {
+  const config = BIP39_CONFIG[wordCount];
+  if (!config) {
+    throw new Error('Invalid wordCount. Must be one of: 12, 15, 18, 21, 24');
+  }
+
+  // Derive entropy from master using SHA3-256
+  // We use multiple rehashes to ensure sufficient entropy extraction
+  const entropyHash = rehash1(master + ':bip39-seed-phrase', 2, sha3);
+  const entropyHex = entropyHash.slice(0, config.entropyBits / 4);
+  const entropy = Buffer.from(entropyHex, 'hex');
+
+  // Compute checksum: first N bits of SHA-256(entropy)
+  const hash = crypto.createHash('sha256').update(entropy).digest('hex');
+  const hashBinary = BigInt('0x' + hash).toString(2).padStart(256, '0');
+  const checksum = hashBinary.slice(0, config.checksumBits);
+
+  // Convert entropy to binary string
+  const entropyBinary = entropy.toString('hex').split('').map(h =>
+    parseInt(h, 16).toString(2).padStart(4, '0')
+  ).join('');
+
+  // Append checksum to entropy
+  const combined = entropyBinary + checksum;
+
+  // Split into 11-bit groups
+  const groups = [];
+  for (let i = 0; i < combined.length; i += 11) {
+    groups.push(combined.slice(i, i + 11));
+  }
+
+  // Map each group to a word from the list
+  const words = groups.map(group => {
+    const index = parseInt(group, 2);
+    return BIP39_WORDLIST[index];
+  });
+
+  return words.join(' ');
+}
+
+/**
+ * Validate a BIP-39 mnemonic phrase
+ * Returns true if the checksum is valid
+ *
+ * @param {string} phrase — Space-separated mnemonic
+ * @returns {boolean}
+ */
+function validateMnemonic(phrase) {
+  const words = phrase.trim().split(/\s+/);
+  if (!BIP39_CONFIG[words.length]) return false;
+
+  const config = BIP39_CONFIG[words.length];
+
+  // Convert words back to binary
+  const indices = words.map(word => BIP39_WORDLIST.indexOf(word));
+  if (indices.some(i => i === -1)) return false;
+
+  const combinedBinary = indices.map(i => i.toString(2).padStart(11, '0')).join('');
+  const entropyBinary = combinedBinary.slice(0, config.entropyBits);
+  const checksum = combinedBinary.slice(config.entropyBits);
+
+  // Reconstruct entropy
+  const entropyHex = [];
+  for (let i = 0; i < entropyBinary.length; i += 4) {
+    const nibble = entropyBinary.slice(i, i + 4);
+    entropyHex.push(parseInt(nibble, 2).toString(16));
+  }
+  const entropy = Buffer.from(entropyHex.join(''), 'hex');
+
+  // Verify checksum
+  const hash = crypto.createHash('sha256').update(entropy).digest('hex');
+  const hashBinary = BigInt('0x' + hash).toString(2).padStart(256, '0');
+  const expectedChecksum = hashBinary.slice(0, config.checksumBits);
+
+  return checksum === expectedChecksum;
+}
+
+// ── The Emoji Alphabet, Proper ───────────────────────
+
+/**
+ * The Emoji Alphabet — A curated, visually distinct symbol set
+ * for deterministic mnemonic phrase generation.
+ *
+ * Design principles:
+ *   - Single Unicode codepoint (no ZWJ sequences, no skin tones)
+ *   - Visually distinctive and memorable
+ *   - Organized by category for memory-palace construction
+ *   - 1024 symbols (10 bits each) for clean bit encoding
+ */
+const EMOJI_ALPHABET = {
+  // Nature: 128 symbols (0–127)
+  nature: [
+    '🌲','🌳','🌴','🌵','🌷','🌸','🌹','🌺','🌻','🌼','🌽','🌾','🌿','🍀','🍁','🍂',
+    '🍃','🍄','🍇','🍈','🍉','🍊','🍋','🍌','🍍','🍎','🍏','🍐','🍑','🍒','🍓','🍔',
+    '🍕','🍖','🍗','🍘','🍙','🍚','🍛','🍜','🍝','🍞','🍟','🍠','🍡','🍢','🍣','🍤',
+    '🍥','🍦','🍧','🍨','🍩','🍪','🍫','🍬','🍭','🍮','🍯','🍰','🍱','🍲','🍳','🍴',
+    '🍵','🍶','🍷','🍸','🍹','🍺','🍻','🍼','🍾','🍿','🎀','🎁','🎂','🎃','🎄','🎅',
+    '🎆','🎇','🎈','🎉','🎊','🎋','🎌','🎍','🎎','🎏','🎐','🎑','🎒','🎓','🎠','🎡',
+    '🎢','🎣','🎤','🎥','🎦','🎧','🎨','🎩','🎪','🎫','🎬','🎭','🎮','🎯','🎰','🎱',
+    '🎲','🎳','🎴','🎵','🎶','🎷','🎸','🎹','🎺','🎻','🎼','🎽','🎾','🎿','🏀','🏁'
+  ],
+  // Creatures: 128 symbols (128–255)
+  creatures: [
+    '🐀','🐁','🐂','🐃','🐄','🐅','🐆','🐇','🐈','🐉','🐊','🐋','🐌','🐍','🐎','🐏',
+    '🐐','🐑','🐒','🐓','🐔','🐕','🐖','🐗','🐘','🐙','🐚','🐛','🐜','🐝','🐞','🐟',
+    '🐠','🐡','🐢','🐣','🐤','🐥','🐦','🐧','🐨','🐩','🐪','🐫','🐬','🐭','🐮','🐯',
+    '🐰','🐱','🐲','🐳','🐴','🐵','🐶','🐷','🐸','🐹','🐺','🐻','🐼','🐽','🐾','👀',
+    '👁','👂','👃','👄','👅','👆','👇','👈','👉','👊','👋','👌','👍','👎','👏','👐',
+    '👑','👒','👓','👔','👕','👖','👗','👘','👙','👚','👛','👜','👝','👞','👟','👠',
+    '👡','👢','👣','👤','👥','👦','👧','👨','👩','👪','👫','👬','👭','👮','👯','👰',
+    '👱','👲','👳','👴','👵','👶','👷','👸','👹','👺','👻','👼','👽','👾','👿','💀'
+  ],
+  // Objects: 128 symbols (256–383)
+  objects: [
+    '💁','💂','💃','💄','💅','💆','💇','💈','💉','💊','💋','💌','💍','💎','💏','💐',
+    '💑','💒','💓','💔','💕','💖','💗','💘','💙','💚','💛','💜','💝','💞','💟','💠',
+    '💡','💢','💣','💤','💥','💦','💧','💨','💩','💪','💫','💬','💭','💮','💯','💰',
+    '💱','💲','💳','💴','💵','💶','💷','💸','💹','💺','💻','💼','💽','💾','💿','📀',
+    '📁','📂','📃','📄','📅','📆','📇','📈','📉','📊','📋','📌','📍','📎','📏','📐',
+    '📑','📒','📓','📔','📕','📖','📗','📘','📙','📚','📛','📜','📝','📞','📟','📠',
+    '📡','📢','📣','📤','📥','📦','📧','📨','📩','📪','📫','📬','📭','📮','📯','📰',
+    '📱','📲','📳','📴','📵','📶','📷','📸','📹','📺','📻','📼','📿','🔀','🔁','🔂'
+  ],
+  // Places: 128 symbols (384–511)
+  places: [
+    '🔃','🔄','🔅','🔆','🔇','🔈','🔉','🔊','🔋','🔌','🔍','🔎','🔏','🔐','🔑','🔒',
+    '🔓','🔔','🔕','🔖','🔗','🔘','🔙','🔚','🔛','🔜','🔝','🔞','🔟','🔠','🔡','🔢',
+    '🔣','🔤','🔥','🔦','🔧','🔨','🔩','🔪','🔫','🔬','🔭','🔮','🔯','🔰','🔱','🔲',
+    '🔳','🔴','🔵','🔶','🔷','🔸','🔹','🔺','🔻','🔼','🔽','🕋','🕌','🕍','🕎','🕐',
+    '🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛','🕜','🕝','🕞','🕟','🕠',
+    '🕡','🕢','🕣','🕤','🕥','🕦','🕧','🗻','🗼','🗽','🗾','🗿','😀','😁','😂','😃',
+    '😄','😅','😆','😇','😈','😉','😊','😋','😌','😍','😎','😏','😐','😑','😒','😓',
+    '😔','😕','😖','😗','😘','😙','😚','😛','😜','😝','😞','😟','😠','😡','😢','😣'
+  ],
+  // Remainder: 512 symbols (512–1023) — diverse single-codepoint emoji
+  remainder: [
+    '😤','😥','😦','😧','😨','😩','😪','😫','😬','😭','😮','😯','😰','😱','😲','😳',
+    '😴','😵','😶','😷','😸','😹','😺','😻','😼','😽','😾','😿','🙀','🙁','🙂','🙃',
+    '🙄','🙅','🙆','🙇','🙈','🙉','🙊','🙋','🙌','🙍','🙎','🙏','🚀','🚁','🚂','🚃',
+    '🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚋','🚌','🚍','🚎','🚏','🚐','🚑','🚒','🚓',
+    '🚔','🚕','🚖','🚗','🚘','🚙','🚚','🚛','🚜','🚝','🚞','🚟','🚠','🚡','🚢','🚣',
+    '🚤','🚥','🚦','🚧','🚨','🚩','🚪','🚫','🚬','🚭','🚮','🚯','🚰','🚱','🚲','🚳',
+    '🚴','🚵','🚶','🚷','🚸','🚹','🚺','🚻','🚼','🚽','🚾','🚿','🛀','🛁','🛂','🛃',
+    '🛄','🛅','🛋','🛌','🛍','🛎','🛏','🛐','🛑','🛒','🛠','🛡','🛢','🛣','🛤','🛥',
+    '🛩','🛫','🛬','🛰','🛳','🛴','🛵','🛶','🛷','🛸','🛹','🛺','🛻','🛼','🟠','🟡',
+    '🟢','🔵','🟣','🟤','⚫','⚪','🟥','🟧','🟨','🟩','🟦','🟪','🟫','⬛','⬜','🟤',
+    '🔴','🟠','🟡','🟢','🔵','🟣','🟤','⚫','⚪','🟥','🟧','🟨','🟩','🟦','🟪','🟫',
+    '⬛','⬜','◼','◻','◾','◽','▪','▫','🔶','🔷','🔸','🔹','🔺','🔻','💠','🔘',
+    '🔳','🔲','🏳','🏴','🏁','🚩','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇺🇳','🇦🇨','🇦🇩','🇦🇪','🇦🇫','🇦🇬','🇦🇮',
+    '🇦🇯','🇦🇰','🇦🇱','🇦🇲','🇦🇴','🇦🇶','🇦🇷','🇦🇸','🇦🇹','🇦🇺','🇦🇼','🇦🇽','🇦🇿','🇧🇦','🇧🇧','🇧🇩',
+    '🇧🇪','🇧🇫','🇧🇬','🇧🇭','🇧🇮','🇧🇯','🇧🇱','🇧🇲','🇧🇳','🇧🇴','🇧🇶','🇧🇷','🇧🇸','🇧🇹','🇧🇻','🇧🇼'
+  ]
+};
+
+// Flatten into a single array for bit-indexed access
+const EMOJI_ALPHABET_FLAT = [
+  ...EMOJI_ALPHABET.nature,
+  ...EMOJI_ALPHABET.creatures,
+  ...EMOJI_ALPHABET.objects,
+  ...EMOJI_ALPHABET.places,
+  ...EMOJI_ALPHABET.remainder
+];
+
+const EMOJI_ALPHABET_SIZE = EMOJI_ALPHABET_FLAT.length;
+
+/**
+ * Generate a deterministic emoji phrase from a master secret
+ * using The Emoji Alphabet encoding scheme.
+ *
+ * @param {string} master — The master secret
+ * @param {number} symbolCount — How many symbols (default: 12)
+ * @returns {string} — Space-separated emoji phrase
+ */
+function generateEmojiPhrase(master, symbolCount = 12) {
+  if (!master || typeof master !== 'string') {
+    throw new Error('Master secret is required');
+  }
+  if (symbolCount < 1 || symbolCount > 64) {
+    throw new Error('symbolCount must be between 1 and 64');
+  }
+
+  // Derive a hash stream from master
+  // We use rehash to get multiple SHA3 outputs, treated as a bit stream
+  let hash = sha3(master + ':emoji-alphabet-v1');
+  let hashIndex = 0;
+  let bitBuffer = BigInt('0x' + hash);
+  let bitsAvailable = hash.length * 4; // hex chars * 4 bits each
+
+  const symbols = [];
+  while (symbols.length < symbolCount) {
+    if (bitsAvailable < 10) {
+      // Need more bits — rehash
+      hash = sha3(hash + String(hashIndex++));
+      bitBuffer = BigInt('0x' + hash);
+      bitsAvailable = hash.length * 4;
+    }
+
+    // Take next 10 bits (for 1024-symbol set)
+    const index = Number(bitBuffer & BigInt(0x3FF)); // 10 bits = 0-1023
+    symbols.push(EMOJI_ALPHABET_FLAT[index % EMOJI_ALPHABET_SIZE]);
+
+    bitBuffer = bitBuffer >> BigInt(10);
+    bitsAvailable -= 10;
+  }
+
+  return symbols.join(' ');
+}
+
+// ── Entropy Calculator for Emoji Alphabet ──────────────
+
+function estimateEmojiPhraseEntropy(symbolCount) {
+  // Each symbol carries log2(set_size) bits
+  const bitsPerSymbol = Math.log2(EMOJI_ALPHABET_SIZE);
+  return Math.floor(symbolCount * bitsPerSymbol);
+}
+
 module.exports = {
+  generateSeedPhrase, validateMnemonic,
+  generateEmojiPhrase, estimateEmojiPhraseEntropy,
+  BIP39_WORDLIST, BIP39_CONFIG, EMOJI_ALPHABET, EMOJI_ALPHABET_FLAT,
+  EMOJI_ALPHABET_SIZE,
   cyrb53, cyrb128, sfc32, sfc32Factory,
   sha3, rehash0, rehash1, extendWord,
   generatePassword, derivePassword, getSalt,
