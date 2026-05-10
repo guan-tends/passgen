@@ -2,8 +2,14 @@
 // Passgen — Stateless deterministic passphrase generator
 // Extracted from Aurora OS (c) Freeman King, ported by Guan
 // License: MIT
+// PHASE 2 — Security Hardening: delimiters, entropy audit, version param, namespace hardening
 
 const crypto = require('crypto');
+
+// ── Version ───────────────────────────────────────────
+// Version v1: legacy bare concatenation (backward compat)
+// Version v2: null-delimited encoding + namespace hardening (default)
+const DEFAULT_VERSION = 2;
 
 // ── Inline Primitives ─────────────────────────────────
 
@@ -102,8 +108,69 @@ function extendWord(word, seedHex, targetLen) {
   return extended;
 }
 
-// Default symbol dictionary (excludes space and single-quote to avoid quoting issues)
-const SYMBOLS = '~!@#$%^&*()_+{}|:"<>?`-=[]\\;,./';
+// ── Entropy Utilities ─────────────────────────────────
+
+function estimateMasterEntropy(master) {
+  if (!master || master.length === 0) return 0;
+  const len = master.length;
+  // Estimate entropy per char based on character classes present
+  const hasLower = /[a-z]/.test(master);
+  const hasUpper = /[A-Z]/.test(master);
+  const hasDigit = /[0-9]/.test(master);
+  const hasSymbol = /[^a-zA-Z0-9]/.test(master);
+  const charSetSize = (hasLower ? 26 : 0) + (hasUpper ? 26 : 0) + (hasDigit ? 10 : 0) + (hasSymbol ? 33 : 0);
+  // Use a conservative floor of 26 to avoid overestimating poor inputs
+  const bitsPerChar = Math.log2(Math.max(26, charSetSize));
+  return Math.floor(len * bitsPerChar);
+}
+
+function estimatePasswordEntropy(password) {
+  // Shannon entropy approximation via unique character frequency
+  const freq = {};
+  for (const ch of password) freq[ch] = (freq[ch] || 0) + 1;
+  let entropy = 0;
+  for (const ch of password) {
+    const p = freq[ch] / password.length;
+    entropy -= p * Math.log2(p);
+  }
+  return Math.round(entropy * password.length);
+}
+
+function classifyStrength(bits) {
+  if (bits >= 200) return 'Very Strong 💪';
+  if (bits >= 150) return 'Strong ✅';
+  if (bits >= 100) return 'Moderate ⚠️';
+  if (bits >= 60)  return 'Weak ❌';
+  return 'Very Weak 💀';
+}
+
+// ── Input Encoding / Hardening ────────────────────────
+
+function buildHashSeed(opts) {
+  const { uri, user, secret, version } = opts;
+  const salt = getSalt();
+  if (version === 1) {
+    // Legacy: bare concatenation (backward compatible with Aurora)
+    return `${uri}${user}${secret}${salt}`;
+  }
+  // Version 2+: null-delimited namespace encoding
+  // Prevents collision between ('ba', 'nk') and ('b', 'ank')
+  const trueUri = String(uri || '');
+  const trueUser = String(user || '');
+  const trueSecret = String(secret || '');
+  const trueSalt = String(salt);
+  // JSON-stable + null-delimiter for unambiguous boundary parsing
+  return `\t${trueUri}\0${trueUser}\0${trueSecret}\0${trueSalt}`;
+}
+
+function buildAuditDigest(opts) {
+  const { uri, user, secret, lengthOption, useSymbols, useCapitalLetters, useEmoji, symbolRatio, emojiRatio, version } = opts;
+  // Deterministic audit hash without exposing secrets
+  return sha3(JSON.stringify({
+    uri, user, lengthOption, useSymbols, useCapitalLetters, useEmoji,
+    symbolRatio, emojiRatio, version
+  }));
+}
 
 // ── Constants ─────────────────────────────────────────
 
@@ -112,6 +179,8 @@ const MAX_WORD_LENGTH = 2 << 6;      // 128
 const DEFAULT_WORD_LENGTH = 2 << 5;  // 64
 
 const DEFAULT_SYMBOL_RATIO = 2 << 4;  // 32
+
+const SYMBOLS = '~!@#$%^&*()_+{}|:"<>?`-=[]\\;,./';
 
 const EMOJI_UNICODE = [
   '⌚','⌛','⏪','⏫','⏬','⏰','⏳','◽','◾','☔','☕','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','♿','⚓','⚡','⚪','⚫','⚽','⚾','⛄','⛅','⛎','⛔','⛪','⛲','⛳','⛵','⛺','⛽','✅','✊','✋','✨','❌','❎','❓','❔','❕','❗','➕','➖','➗','➰','➿','⬛','⬜','⭐','⭕','🀄','🃏','🆎','🆑','🆒','🆓','🆔','🆕','🆖','🆗','🆘','🆙','🆚','🈁','🈚','🈯','🈲','🈳','🈴','🈵','🈶','🈸','🈹','🈺','🉐','🉑','🌀','🌁','🌂','🌃','🌄','🌅','🌆','🌇','🌈','🌉','🌊','🌋','🌌','🌍','🌎','🌏','🌐','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌙','🌚','🌛','🌜','🌝','🌞','🌟','🌠','🌭','🌮','🌯','🌰','🌱','🌲','🌳','🌴','🌵','🌷','🌸','🌹','🌺','🌻','🌼','🌽','🌾','🌿','🍀','🍁','🍂','🍃','🍄','🍅','🍆','🍇','🍈','🍉','🍊','🍋','🍌','🍍','🍎','🍏','🍐','🍑','🍒','🍓','🍔','🍕','🍖','🍗','🍘','🍙','🍚','🍛','🍜','🍝','🍞','🍟','🍠','🍡','🍢','🍣','🍤','🍥','🍦','🍧','🍨','🍩','🍪','🍫','🍬','🍭','🍮','🍯','🍰','🍱','🍲','🍳','🍴','🍵','🍶','🍷','🍸','🍹','🍺','🍻','🍼','🍾','🍿','🎀','🎁','🎂','🎃','🎄','🎅','🎆','🎇','🎈','🎉','🎊','🎋','🎌','🎍','🎎','🎏','🎐','🎑','🎒','🎓','🎠','🎡','🎢','🎣','🎤','🎥','🎦','🎧','🎨','🎩','🎪','🎫','🎬','🎭','🎮','🎯','🎰','🎱','🎲','🎳','🎴','🎵','🎶','🎷','🎸','🎹','🎺','🎻','🎼','🎽','🎾','🎿','🏀','🏁','🏂','🏃','🏄','🏅','🏆','🏇','🏈','🏉','🏊','🏏','🏐','🏑','🏒','🏓','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏧','🏨','🏩','🏪','🏫','🏬','🏭','🏮','🏯','🏰','🏴','🏸','🏹','🏺','👀','👂','👃','👄','👅','👆','👇','👈','👉','👊','👋','👌','👍','👎','👏','👐','👑','👒','👓','👔','👕','👖','👗','👘','👙','👚','👛','👜','👝','👞','👟','👠','👡','👢','👣','👤','👥','👦','👧','👨','👩','👪','👫','👬','👭','👮','👯','👰','👱','👲','👳','👴','👵','👶','👷','👸','👹','👺','👻','👼','👽','👾','👿','💀','💁','💂','💃','💄','💅','💆','💇','💈','💉','💊','💋','💌','💍','💎','💏','💐','💑','💒','💓','💔','💕','💖','💗','💘','💙','💚','💛','💜','💝','💞','💟','💠','💡','💢','💣','💤','💥','💦','💧','💨','💩','💪','💫','💬','💭','💮','💯','💰','💱','💲','💳','💴','💵','💶','💷','💸','💹','💺','💻','💼','💽','💾','💿','📀','📁','📂','📃','📄','📅','📆','📇','📈','📉','📊','📋','📌','📍','📎','📏','📐','📑','📒','📓','📔','📕','📖','📗','📘','📙','📚','📛','📜','📝','📞','📟','📠','📡','📢','📣','📤','📥','📦','📧','📨','📩','📪','📫','📬','📭','📮','📯','📰','📱','📲','📳','📴','📵','📶','📷','📸','📹','📺','📻','📼','📿','🔀','🔁','🔂','🔃','🔄','🔅','🔆','🔇','🔈','🔉','🔊','🔋','🔌','🔍','🔎','🔏','🔐','🔑','🔒','🔓','🔔','🔕','🔖','🔗','🔘','🔙','🔚','🔛','🔜','🔝','🔞','🔟','🔠','🔡','🔢','🔣','🔤','🔥','🔦','🔧','🔨','🔩','🔪','🔫','🔬','🔭','🔮','🔯','🔰','🔱','🔲','🔳','🔴','🔵','🔶','🔷','🔸','🔹','🔺','🔻','🔼','🔽','🕋','🕌','🕍','🕎','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛','🕜','🕝','🕞','🕟','🕠','🕡','🕢','🕣','🕤','🕥','🕦','🕧','🖕','🖖'
@@ -128,14 +197,12 @@ function generatePassword(opts) {
     uri, user, secret,
     useSymbols, useCapitalLetters, useEmoji,
     lengthOption,
-    symbolRatio, emojiRatio
+    symbolRatio, emojiRatio,
+    version = DEFAULT_VERSION
   } = opts;
 
-  const hash = rehash1(
-    `${uri}${user}${secret}${getSalt()}`,
-    2 << 3,  // 16 rounds
-    sha3
-  );
+  const hashSeed = buildHashSeed({ uri, user, secret, version });
+  const hash = rehash1(hashSeed, 2 << 3, sha3);
 
   let word = BigInt(`0x${hash}`).toString(36);
 
@@ -220,9 +287,16 @@ Options:
   -E, --emoji              Include emoji (not recommended for most services)
   --symbol-ratio <n>       Symbol replacement ratio % [0–100] (default: 32)
   --emoji-ratio <n>        Emoji replacement ratio % [0–100] (default: 24)
+  --version <n>            Derivation version [1|2] (default: 2; v1 = legacy concat)
+  --entropy                Show entropy estimates alongside password
+  --audit                  Show derivation audit digest for debugging
   -h, --help               Show this help
 
 Master secret may also be set via PASSGEN_MASTER env var.
+
+Version Notes:
+  v1  Legacy bare concatenation (backward compatible with Aurora OS)
+  v2  Null-delimited namespace encoding (default, prevents collision attacks)
 `);
 }
 
@@ -237,6 +311,9 @@ function parseArgs(argv) {
     emoji: false,
     symbolRatio: DEFAULT_SYMBOL_RATIO / 100,
     emojiRatio: (3 << 3) / 100,
+    version: DEFAULT_VERSION,
+    showEntropy: false,
+    showAudit: false,
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -252,6 +329,9 @@ function parseArgs(argv) {
       case '-E': case '--emoji': opts.emoji = true; break;
       case '--symbol-ratio': opts.symbolRatio = parseInt(next()) / 100; break;
       case '--emoji-ratio': opts.emojiRatio = parseInt(next()) / 100; break;
+      case '--version': opts.version = parseInt(next()); break;
+      case '--entropy': opts.showEntropy = true; break;
+      case '--audit': opts.showAudit = true; break;
       case '-h': case '--help': showHelp(); process.exit(0); break;
       default: console.error(`Unknown option: ${arg}`); process.exit(1);
     }
@@ -284,9 +364,28 @@ function main(argv) {
     lengthOption: cli.length,
     symbolRatio: cli.symbolRatio,
     emojiRatio: cli.emojiRatio,
+    version: cli.version,
   });
 
-  console.log(password);
+  if (cli.showEntropy) {
+    const masterBits = estimateMasterEntropy(cli.master);
+    const passBits = estimatePasswordEntropy(password);
+    console.log(`# Password: ${password}`);
+    console.log(`# Master entropy estimate: ~${masterBits} bits (${classifyStrength(masterBits)})`);
+    console.log(`# Password entropy estimate: ~${passBits} bits`);
+  } else if (cli.showAudit) {
+    const auditDigest = buildAuditDigest({
+      uri: cli.service, user: cli.identity,
+      lengthOption: cli.length,
+      useSymbols: cli.symbols, useCapitalLetters: cli.caps, useEmoji: cli.emoji,
+      symbolRatio: cli.symbolRatio, emojiRatio: cli.emojiRatio,
+      version: cli.version,
+    });
+    console.log(`# Password: ${password}`);
+    console.log(`# Audit digest: ${auditDigest.slice(0, 32)}…`);
+  } else {
+    console.log(password);
+  }
 }
 
 // ── Entry ─────────────────────────────────────────────
@@ -299,6 +398,8 @@ module.exports = {
   cyrb53, cyrb128, sfc32, sfc32Factory,
   sha3, rehash0, rehash1, extendWord,
   generatePassword, derivePassword, getSalt,
+  buildHashSeed, buildAuditDigest,
+  estimateMasterEntropy, estimatePasswordEntropy, classifyStrength,
   EMOJI_UNICODE, SYMBOLS,
-  MIN_WORD_LENGTH, MAX_WORD_LENGTH, DEFAULT_WORD_LENGTH,
+  MIN_WORD_LENGTH, MAX_WORD_LENGTH, DEFAULT_WORD_LENGTH, DEFAULT_VERSION,
 };
