@@ -1,0 +1,18 @@
+{
+  "name": "passgen",
+  "version": "1.0.0",
+  "description": "Stateless deterministic passphrase generator — extracted from Aurora OS",
+  "main": "passgen.js",
+  "bin": {
+    "passgen": "./passgen.js"
+  },
+  "scripts": {
+    "test": "node --test test/passgen.test.js"
+  },
+  "keywords": ["password", "passphrase", "generator", "deterministic", "kdf", "sha3"],
+  "author": "the maintainer King & Guan",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
