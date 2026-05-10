@@ -4,15 +4,36 @@
   "description": "Stateless deterministic passphrase generator — extracted from Aurora OS",
   "main": "passgen.js",
   "bin": {
-    "passgen": "./passgen.js"
+    "passgen": "./passgen.js",
+    "passgen-mcp": "./mcp-server.mjs"
   },
   "scripts": {
-    "test": "node --test test/passgen.test.js"
+    "test": "node --test test/*.test.js",
+    "test:core": "node --test test/passgen.test.js",
+    "test:phase2": "node --test test/phase2.test.js",
+    "test:mcp": "node --test test/mcp-server.test.js",
+    "mcp": "node mcp-server.mjs --stdio"
   },
-  "keywords": ["password", "passphrase", "generator", "deterministic", "kdf", "sha3"],
+  "keywords": [
+    "password",
+    "passphrase",
+    "generator",
+    "deterministic",
+    "kdf",
+    "sha3",
+    "mcp"
+  ],
   "author": "the maintainer King & Guan",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@l4t/mcp-ai": "file:/home/guan/src/mcp-ai",
+    "zod": "^3.22.0"
+  },
+  "exports": {
+    ".": "./passgen.js",
+    "./mcp": "./mcp-server.mjs"
   }
 }
