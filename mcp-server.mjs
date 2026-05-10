@@ -25,6 +25,11 @@ const {
   validateMnemonic,
   generateEmojiPhrase,
   estimateEmojiPhraseEntropy,
+  analyzeMasterStrength,
+  formatCrackTime,
+  loadDicewareWordlist,
+  generateDicewareMaster,
+  checkMasterPwned,
   BIP39_CONFIG,
   MIN_WORD_LENGTH,
   MAX_WORD_LENGTH,
@@ -99,8 +104,39 @@ const tools = [
   },
 
   {
+    name: 'analyze_master_strength',
+    description: 'Deep analysis of a master secret or password: Shannon entropy, pattern detection (dictionary words, keyboard walks, sequential digits, repeated characters, common passwords), strength classification, estimated crack time, and actionable recommendations. Phase 7 powered.',
+    inputSchema: z.object({
+      secret: z.string().min(1).describe('Master secret or password to analyze deeply.'),
+    }),
+    execute: async ({ secret }) => {
+      try {
+        const result = analyzeMasterStrength(secret)
+        const lines = [
+          `Strength: ${result.strengthClass}`,
+          `Shannon entropy: ${result.shannonBits} bits`,
+          `Pattern-adjusted: ${result.patternAdjustedBits} bits`,
+          `Estimated crack time: ${formatCrackTime(result.estimatedCrackTimeSeconds)}`,
+        ]
+        if (result.warnings.length) {
+          lines.push('', 'Warnings:')
+          result.warnings.forEach(w => lines.push(`  • ${w}`))
+        }
+        if (result.patternsDetected.length) {
+          lines.push('', 'Patterns detected:')
+          result.patternsDetected.forEach(p => lines.push(`  • ${p.type} (${p.severity})`))
+        }
+        lines.push('', `Recommendation: ${result.recommendedAction}`)
+        return { content: [{ type: 'text', text: lines.join('\n') }] }
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }
+      }
+    },
+  },
+
+  {
     name: 'check_entropy',
-    description: 'Estimate the entropy (strength) of a master secret or generated password. Returns bits of entropy and a human-readable classification.',
+    description: 'Estimate the entropy (strength) of a master secret or generated password. Returns bits of entropy and a human-readable classification. Legacy tool — use analyze_master_strength for deeper analysis.',
     inputSchema: z.object({
       master: z.string().optional().describe('Master secret to evaluate. If provided, estimates its entropy.'),
       password: z.string().optional().describe('Generated password to evaluate. If provided, estimates its Shannon entropy.'),
@@ -197,6 +233,62 @@ const tools = [
       }
     },
   },
+
+  {
+    name: 'generate_diceware_passphrase',
+    description: 'Generate a Diceware passphrase using CSPRNG and the EFF 7776-word list. Each word is ~12.9 bits of entropy. Supports 6–10 words. Stateless: same inputs produce the same passphrase via cryptographic PRNG seeded from master secret.',
+    inputSchema: z.object({
+      master: z.string().min(1).describe('Master secret to seed the CSPRNG. Must be strong — this is NOT memorization-friendly like traditional Diceware rolling.'),
+      wordCount: z.number().int().min(6).max(10).default(8).describe('Number of words: 6–10 (default 8 = ~103 bits).'),
+    }),
+    execute: async ({ master, wordCount }) => {
+      if (!master) {
+        return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
+      }
+      try {
+        const result = generateDicewareMaster(wordCount)
+        return { content: [{ type: 'text', text: `${result.phrase}\n\n(${wordCount} words, ~${result.entropyBits} bits, ${result.strengthClass})` }] }
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }
+      }
+    },
+  },
+
+  {
+    name: 'check_master_breach',
+    description: 'Check if a master secret has appeared in known data breaches using HaveIBeenPwned k-Anonymity API. Only the first 5 chars of the SHA-1 hash are sent to the API. Privacy-preserving.',
+    inputSchema: z.object({
+      master: z.string().min(1).describe('Master secret to check against breach databases.'),
+    }),
+    execute: async ({ master }) => {
+      if (!master) {
+        return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
+      }
+      try {
+        const result = await checkMasterPwned(master)
+        if (result.breached) {
+          return { content: [{ type: 'text', text: `⚠️ BREACHED: Found ${result.count.toLocaleString()} time(s) in known data breaches. \n\nThis password is COMPROMISED. Change it immediately everywhere it is used. Never reuse this password. Beware: attackers may have already targeted accounts associated with this password.` }] }
+        }
+        return { content: [{ type: 'text', text: `✅ Clean: Not found in any known data breaches via HaveIBeenPwned.\n\nYour password has not appeared in their corpus of ${result.totalInCorpus?.toLocaleString() || 'over 1 billion'} known leaked passwords. This does not guarantee safety — it only means no match in the known-leak database.` }] }
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }
+      }
+    },
+  },
+
+  {
+    name: 'get_diceware_wordlist_info',
+    description: 'Get information about the EFF Large Wordlist used for Diceware passphrase generation. Returns word count and a sample of the first few words.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      try {
+        const wl = loadDicewareWordlist()
+        return { content: [{ type: 'text', text: `EFF Large Wordlist: ${wl.length} words loaded\nFirst 10: ${wl.slice(0, 10).join(', ')}\n\nEach word = ~12.9 bits of entropy.\n8 words = ~103 bits (very-strong).\n10 words = ~129 bits (cryptographic).` }] }
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }
+      }
+    },
+  },
 ]
 
 // ── Server Startup ────────────────────────────────────
@@ -212,7 +304,7 @@ if (isMain) {
   server = createSimpleServer(serverConfig)
   await server.start()
   console.log(`[Passgen MCP] Ready — ${tools.length} tools loaded`)
-  console.log(`[Passgen MCP] Tools: generate_password | generate_seed_phrase | generate_emoji_phrase | check_entropy | audit_params`)
+  console.log(`[Passgen MCP] Tools: generate_password | generate_seed_phrase | generate_emoji_phrase | generate_diceware_passphrase | analyze_master_strength | check_entropy | check_master_breach | get_diceware_wordlist_info | audit_params`)
 }
 
 export { server, TRANSPORT, tools }
