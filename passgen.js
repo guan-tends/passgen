@@ -289,6 +289,25 @@ function formatCrackTime(seconds) {
 
 // ── Input Encoding / Hardening ────────────────────────
 
+/**
+ * Build the pre-hash seed string from derivation parameters.
+ *
+ * @intent Encode service identity + user identity + master secret into a single
+ *   unambiguous string for hashing. This is the critical boundary where
+ *   namespace hardening happens.
+ * @param {Object} opts
+ * @param {string} opts.uri     — Service name or URI
+ * @param {string} opts.user    — User identity / account name
+ * @param {string} opts.secret  — Master secret
+ * @param {number} opts.version — Derivation version (1 = legacy, 2 = null-delimited)
+ * @returns {string} Seed string ready for SHA3-256 hashing
+ *
+ * @version 1 — Legacy: bare concatenation. Vulnerable to dangling-suffix attacks
+ *   where ('ba','nk') and ('b','ank') produce identical seeds. Preserved for
+ *   backward compatibility with Aurora OS outputs.
+ * @version 2 (default) — Null-delimited encoding: `\turi\0user\0secret\0salt`.
+ *   Unambiguous boundary parsing prevents all concatenation collision attacks.
+ */
 function buildHashSeed(opts) {
   const { uri, user, secret, version } = opts;
   const salt = getSalt();
@@ -331,10 +350,39 @@ const EMOJI_UNICODE = [
 
 // ── Core Generator ────────────────────────────────────
 
+/**
+ * Return the deterministic salt constant.
+ *
+ * @intent Provide a fixed salt for stateless derivation. Not random by design —
+ *   a stateless system cannot store per-user salts. The salt is public and
+ *   deterministic; security comes entirely from master secret entropy.
+ * @returns {number} Fixed salt derived from mathematical constants.
+ */
 function getSalt() {
   return cyrb53(`${0x9E3779B9}${0x243F6A88}${0xB7E15162}${1337 ^ 0xDEADBEEF}`);
 }
 
+/**
+ * Generate a single-round deterministic password from derivation parameters.
+ *
+ * @intent Core password generation: hash the seed, convert to base36, apply
+ *   character class modifications (symbols, caps, emoji) seeded from the hash.
+ *   This is the inner loop; use derivePassword() for production.
+ * @param {Object} opts
+ * @param {string} opts.uri              — Service name or URI
+ * @param {string} opts.user             — User identity
+ * @param {string} opts.secret           — Master secret
+ * @param {boolean} opts.useSymbols      — Replace chars with symbols
+ * @param {boolean} opts.useCapitalLetters — Randomly upcase chars
+ * @param {boolean} opts.useEmoji        — Replace chars with emoji (service warning)
+ * @param {number} opts.lengthOption     — Target password length (16–128)
+ * @param {number} opts.symbolRatio      — Symbol replacement probability (0–1)
+ * @param {number} opts.emojiRatio       — Emoji replacement probability (0–1)
+ * @param {number} [opts.version=2]      — Derivation version (1=legacy)
+ * @returns {string} Generated password
+ * @warning Word length may differ from target if emoji span multiple code units.
+ *   A console.warn is emitted if length mismatch exceeds expected bounds.
+ */
 function generatePassword(opts) {
   const {
     uri, user, secret,
@@ -402,6 +450,24 @@ function generatePassword(opts) {
 
 // ── 24-Round Transformer ──────────────────────────────
 
+/**
+ * Derive a password through 24 rounds of state mutation.
+ *
+ * @intent Apply additional rounds of derivation where each round feeds the
+ *   previous password back as the new secret, mutating uri and user via
+ *   cyrb53 hashing. This creates a transformed output that is not trivially
+ *   reversible from the initial hash result.
+ *
+ *   This is NOT key stretching (no increased computational cost for attackers).
+ *   The purpose is state mutation: each round changes the internal derivation
+ *   state, producing a nonlinear relationship between master secret and output.
+ *
+ * @param {Object} opts — Same options as generatePassword()
+ * @returns {string} Derivation result after 24 rounds
+ *
+ * @note For production use, always call derivePassword(); generatePassword()
+ *   is the single-round inner loop.
+ */
 function derivePassword(opts) {
   let final = generatePassword(opts);
   for (let i = 0; i < (3 << 3); i++) {
@@ -688,6 +754,27 @@ const BIP39_CONFIG = {
  * @param {number} wordCount — 12, 15, 18, 21, or 24 (default: 24)
  * @returns {string} — Space-separated mnemonic phrase
  */
+/**
+ * Generate a deterministic BIP-39 mnemonic phrase from a master secret.
+ *
+ * @intent Produce a reproducible seed phrase for memory aids, offline backup,
+ *   or cross-device synchronization. The phrase is valid per BIP-39 checksum.
+ *
+ * @param {string} master — The master secret
+ * @param {number} wordCount — 12, 15, 18, 21, or 24 (default: 24)
+ * @returns {string} — Space-separated mnemonic phrase
+ *
+ * @warning ⚠️ NON-STANDARD DERIVATION: This generates a deterministic BIP-39
+ *   phrase via SHA3-256 hashing of the master secret. It does NOT follow the
+ *   standard BIP-39 process (entropy generation -> mnemonic encoding -> seed
+ *   derivation via PBKDF2 with 2048 iterations and optional passphrase).
+ *
+ *   The output phrases are CHECKSUM-VALID but NOT COMPATIBLE with standard
+ *   cryptocurrency wallets. Do NOT use these phrases in wallets expecting
+ *   standard BIP-39 derivation. Loss of funds may result from confusion.
+ *
+ *   If you need standard BIP-39, use a dedicated wallet tool, not Passgen.
+ */
 function generateSeedPhrase(master, wordCount = 24) {
   const config = BIP39_CONFIG[wordCount];
   if (!config) {
@@ -810,6 +897,19 @@ function generateDicewareMaster(wordCount = 8) {
 
 const https = require("https");
 
+/**
+ * Check if a master secret has appeared in known data breaches.
+ *
+ * @intent Privacy-preserving breach detection via HaveIBeenPwned k-Anonymity.
+ *   Only the first 5 characters of the SHA-1 hash are transmitted to the API.
+ *   The full hash never leaves the local system.
+ *
+ * @param {string} master — The secret to check
+ * @returns {Promise<Object>} — { found, count, prefix, offline?, error? }
+ *
+ * @note If the API is unreachable, returns { offline: true } silently.
+ *   A breach check failure does NOT mean the password is safe.
+ */
 function checkMasterPwned(master) {
   return new Promise((resolve) => {
     try {
@@ -952,6 +1052,21 @@ const EMOJI_ALPHABET_SIZE = EMOJI_ALPHABET_FLAT.length;
  * @param {string} master — The master secret
  * @param {number} symbolCount — How many symbols (default: 12)
  * @returns {string} — Space-separated emoji phrase
+ */
+/**
+ * Generate a deterministic emoji phrase from a master secret.
+ *
+ * @intent Produce a visually memorable mnemonic using The Emoji Alphabet —
+ *   a curated 1024-symbol set organized in memory-palace categories.
+ *   Each symbol carries ~10 bits of entropy. Ideal for visual memory aids,
+ *   offline notetaking, or cross-verification of other generator outputs.
+ *
+ * @param {string} master — The master secret
+ * @param {number} symbolCount — Number of symbols to generate (1–64, default: 12)
+ * @returns {string} — Space-separated emoji phrase
+ *
+ * @note Most services do not support emoji in passwords. This is for
+ *   mnemonic construction and visual verification, not direct password use.
  */
 function generateEmojiPhrase(master, symbolCount = 12) {
   if (!master || typeof master !== 'string') {
