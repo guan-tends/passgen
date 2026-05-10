@@ -144,6 +144,149 @@ function classifyStrength(bits) {
   return 'Very Weak 💀';
 }
 
+// ── Master Strength Analyzer ─────────────────────────
+// Phase 7: Honest entropy with pattern detection
+
+const WEAK_PASSWORDS = new Set([
+  'password','123456','12345678','qwerty','abc123','monkey','letmein',
+  'dragon','111111','baseball','iloveyou','trustno1','sunshine',
+  'princess','admin','welcome','shadow','ashley','football','jesus',
+  'michael','ninja','mustang','password1','123456789','adobe123',
+  'admin123','letmein1','photoshop','master','hello','freedom',
+  'whatever','qazwsx','starwars','zaq12wsx','password123','login',
+  'princess1','solo','qwertyuiop','rockyou','mynoob','thomas',
+  'batman','passw0rd','hacker','love123','welcome1','charlie'
+]);
+
+const KEYBOARD_WALKS = [
+  'qwerty','asdf','zxcvb','qwertyuiop','asdfghjkl','zxcvbnm',
+  'qazwsx','wsxedcrfvtgb','ytrewq','fdsa','bvxcz',
+  '1qaz2wsx','qwertzuiop','yxcvbnm','poiuytrewq','lkjhgfdsa',
+  'mnbvcxz','edcrfvtgb','plmoknijb','qawsedrf','zaq1xsw2'
+];
+
+const REVERSE_SUBSTITUTIONS = { '@':'a','$':'s','1':'i','!':'i','0':'o','3':'e','7':'t','9':'g','8':'b','5':'s' };
+
+function estimateShannonBits(master) {
+  if (!master || master.length === 0) return 0;
+  const freqs = {};
+  for (const c of master) freqs[c] = (freqs[c] || 0) + 1;
+  let entropy = 0;
+  for (const count of Object.values(freqs)) {
+    const p = count / master.length;
+    entropy -= p * Math.log2(p);
+  }
+  return Math.round(entropy * master.length);
+}
+
+function analyzeMasterStrength(master) {
+  const patterns = [];
+  const warnings = [];
+  const lower = master.toLowerCase();
+  const shannonBits = estimateShannonBits(master);
+
+  // Dictionary check
+  for (const weak of WEAK_PASSWORDS) {
+    if (lower.includes(weak)) {
+      patterns.push({ type: "dictionary-word", severity: "critical" });
+      warnings.push(`Contains common password: "${weak}"`);
+    }
+  }
+
+  // Keyboard walks
+  for (const walk of KEYBOARD_WALKS) {
+    if (lower.includes(walk)) {
+      patterns.push({ type: "keyboard-walk", severity: "high" });
+      warnings.push(`Contains keyboard walk: "${walk}"`);
+    }
+  }
+
+  // Sequential / repeated digits
+  const digitMatch = master.match(/\d{3,}/);
+  if (digitMatch) {
+    const match = digitMatch[0];
+    const isSeq = [...match].slice(1).every((c, i) => parseInt(c) === parseInt(match[i]) + 1);
+    const isRep = new Set(match).size === 1;
+    if (isSeq || isRep) {
+      patterns.push({ type: isSeq ? "sequential-digits" : "repeated-digits", severity: "high" });
+      warnings.push(`${isSeq ? "Sequential" : "Repeated"} digits: "${match}"`);
+    }
+  }
+
+  // Repeated characters
+  const repMatch = master.match(/(.)\1{2,}/);
+  if (repMatch) {
+    patterns.push({ type: "repeated-char", severity: "medium" });
+    warnings.push(`Repeated character: "${repMatch[0]}"`);
+  }
+
+  // Substitution unmask
+  let unsubst = lower;
+  for (const [sub, orig] of Object.entries(REVERSE_SUBSTITUTIONS)) {
+    unsubst = unsubst.replace(new RegExp("\\\\" + sub, "g"), orig);
+  }
+  if (unsubst !== lower) {
+    for (const weak of WEAK_PASSWORDS) {
+      if (unsubst.includes(weak)) {
+        patterns.push({ type: "substitution-mask", severity: "high" });
+        warnings.push(`Common word with substitutions: "${weak}"`);
+        break;
+      }
+    }
+  }
+
+  let penalty = 0;
+  for (const p of patterns) {
+    if (p.severity === "critical") penalty += 20;
+    else if (p.severity === "high") penalty += 10;
+    else if (p.severity === "medium") penalty += 5;
+  }
+  const patternAdjustedBits = Math.max(0, shannonBits - penalty);
+
+  const guessesPerSecond = 1e12;
+  const rounds = parseInt(process.env.PASSGEN_ROUNDS || "24", 10);
+  const slowdownFactor = Math.max(1, rounds / 24);
+  const estimatedCrackTimeSeconds = (Math.pow(2, patternAdjustedBits) / guessesPerSecond) * slowdownFactor;
+
+  let strengthClass;
+  if (patternAdjustedBits < 30) strengthClass = "very-weak";
+  else if (patternAdjustedBits < 50) strengthClass = "weak";
+  else if (patternAdjustedBits < 70) strengthClass = "moderate";
+  else if (patternAdjustedBits < 90) strengthClass = "strong";
+  else strengthClass = "very-strong";
+
+  const actions = {
+    "very-weak":   "Generate Diceware passphrase immediately.",
+    "weak":        "Use a longer passphrase or Diceware.",
+    "moderate":    "Consider 8+ Diceware words for critical assets.",
+    "strong":      "Good. Use 10+ Diceware for nation-state resistance.",
+    "very-strong": "Excellent. Maintain operational security."
+  };
+
+  return {
+    shannonBits,
+    patternAdjustedBits,
+    estimatedCrackTimeSeconds,
+    strengthClass,
+    patternsDetected: patterns,
+    warnings,
+    recommendedAction: actions[strengthClass]
+  };
+}
+
+function formatCrackTime(seconds) {
+  if (seconds < 1e-9) return "instant";
+  if (seconds < 1)     return "< 1 second";
+  if (seconds < 60)    return `${Math.round(seconds)} seconds`;
+  if (seconds < 3600)  return `${Math.round(seconds / 60)} minutes`;
+  if (seconds <= 86400) return `${Math.round(seconds / 3600)} hours`;
+  if (seconds < 2.628e6)  return `${Math.round(seconds / 86400)} days`;
+  if (seconds < 3.154e7)  return `${Math.round(seconds / 2.628e6)} months`;
+  if (seconds < 3.154e8)  return `${Math.round(seconds / 3.154e7)} years`;
+  if (seconds < 3.154e10) return `${Math.round(seconds / 3.154e7 / 100)} centuries`;
+  return "heat death of universe";
+}
+
 // ── Input Encoding / Hardening ────────────────────────
 
 function buildHashSeed(opts) {
@@ -299,6 +442,11 @@ Emoji Phrase Mode:
   --symbol-count <n>       How many emoji symbols [1–64] (default: 12)
   --list-emoji-set         Show the Emoji Alphabet categories
 
+Master Quality & Diceware:
+  --generate-master        Generate a Diceware master passphrase
+  --check-master <secret>  Analyze master password strength
+  --wordlist               Show Diceware wordlist info
+
 Info & Audit:
   --entropy                Show entropy estimates
   --audit                  Show derivation audit digest
@@ -353,6 +501,9 @@ function parseArgs(argv) {
       case '--list-emoji-set': opts.mode = 'list'; break;
       case '--entropy': opts.showEntropy = true; break;
       case '--audit': opts.showAudit = true; break;
+      case '--generate-master': opts.mode = 'generate-master'; break;
+      case '--check-master': opts.mode = 'check-master'; opts.master = next(); break;
+      case '--wordlist': opts.mode = 'wordlist'; break;
       case '-h': case '--help': showHelp(); process.exit(0); break;
       default: console.error(`Unknown option: ${arg}`); process.exit(1);
     }
@@ -381,8 +532,8 @@ function parseArgs(argv) {
   opts.symbolRatio = Math.max(0, Math.min(1, opts.symbolRatio));
   opts.emojiRatio = Math.max(0, Math.min(1, opts.emojiRatio));
 
-  // Master required for generators; not required for --validate or --list
-  if (!opts.master && opts.mode !== 'validate' && opts.mode !== 'list') {
+  // Master required for password/seed/emoji generators; not required for info modes
+  if (!opts.master && !['validate','list','generate-master','check-master','wordlist'].includes(opts.mode)) {
     console.error('Error: --master required or set PASSGEN_MASTER env var');
     process.exit(1);
   }
@@ -439,6 +590,40 @@ function main(argv) {
 
     case 'list': {
       showEmojiSet();
+      break;
+    }
+
+    case 'generate-master': {
+      const result = generateDicewareMaster(cli.wordCount || 8);
+      console.log(result.phrase);
+      if (cli.showEntropy) {
+        console.error(` _entropy: ${result.entropyBits} bits (${result.strengthClass})`);
+      }
+      break;
+    }
+
+    case 'check-master': {
+      const result = analyzeMasterStrength(cli.master);
+      console.log(`Strength: ${result.strengthClass}`);
+      console.log(`Shannon entropy: ${result.shannonBits} bits`);
+      console.log(`Pattern-adjusted: ${result.patternAdjustedBits} bits`);
+      console.log(`Estimated crack time: ${formatCrackTime(result.estimatedCrackTimeSeconds)}`);
+      if (result.warnings.length) {
+        console.log('\nWarnings:');
+        result.warnings.forEach(w => console.log(`  • ${w}`));
+      }
+      if (result.patternsDetected.length) {
+        console.log('\nPatterns detected:');
+        result.patternsDetected.forEach(p => console.log(`  • ${p.type} (${p.severity})`));
+      }
+      console.log(`\nRecommendation: ${result.recommendedAction}`);
+      break;
+    }
+
+    case 'wordlist': {
+      const wl = loadDicewareWordlist();
+      console.log(`EFF Large Wordlist: ${wl.length} words loaded`);
+      console.log(`First 5: ${wl.slice(0, 5).join(', ')}`);
       break;
     }
 
@@ -578,6 +763,83 @@ function validateMnemonic(phrase) {
   const expectedChecksum = hashBinary.slice(0, config.checksumBits);
 
   return checksum === expectedChecksum;
+}
+
+// ── Diceware Master Generator ────────────────────────
+// Phase 7: CSPRNG-based passphrase generation
+
+const fs = require("fs");
+const path = require("path");
+function loadDicewareWordlist() {
+  try {
+    const data = fs.readFileSync(path.join(__dirname, "eff_large_wordlist.txt"), "utf8");
+    const lines = data.trim().split('\n');
+    const words = lines.map(line => line.split('\t')[1]).filter(Boolean);
+    return words;
+  } catch (err) {
+    return [];
+  }
+}
+
+function generateDicewareMaster(wordCount = 8) {
+  const wordlist = loadDicewareWordlist();
+  if (wordlist.length < 7776) {
+    throw new Error("Diceware wordlist not loaded. Ensure eff_large_wordlist.txt is present.");
+  }
+  const words = [];
+  for (let w = 0; w < wordCount; w++) {
+    let roll = 0;
+    for (let d = 0; d < 5; d++) {
+      const byte = crypto.randomBytes(1)[0];
+      roll = roll * 6 + (byte % 6);
+    }
+    words.push(wordlist[roll]);
+  }
+  const bitsPerWord = Math.log2(7776);
+  const totalBits = Math.floor(wordCount * bitsPerWord);
+  let sc;
+  if (totalBits < 60) sc = "weak";
+  else if (totalBits < 80) sc = "moderate";
+  else if (totalBits < 100) sc = "strong";
+  else sc = "very-strong";
+  return { words, entropyBits: totalBits, strengthClass: sc, phrase: words.join(" ") };
+}
+
+// ── HIBP Breach Check (k-anonymity) ──────────────────
+// Phase 7: HaveIBeenPwned integration
+
+const https = require("https");
+
+function checkMasterPwned(master) {
+  return new Promise((resolve) => {
+    try {
+      const hash = crypto.createHash("sha1").update(master).digest("hex").toUpperCase();
+      const prefix = hash.slice(0, 5);
+      const suffix = hash.slice(5);
+
+      const req = https.get(
+        `https://api.pwnedpasswords.com/range/${prefix}`,
+        { headers: { "User-Agent": "passgen-cli/1.0" }, timeout: 5000 },
+        (res) => {
+          let data = "";
+          res.on("data", c => data += c);
+          res.on("end", () => {
+            for (const line of data.split(/\r?\n/)) {
+              const [suf, cnt] = line.split(":");
+              if (suf === suffix) {
+                return resolve({ found: true, count: parseInt(cnt, 10) || 0, prefix });
+              }
+            }
+            resolve({ found: false, count: 0, prefix });
+          });
+        }
+      );
+      req.on("error", (err) => resolve({ found: false, count: 0, offline: true, error: err.message }));
+      req.on("timeout", () => { req.destroy(); resolve({ found: false, count: 0, offline: true, error: "timeout" }); });
+    } catch (err) {
+      resolve({ found: false, count: 0, offline: true, error: err.message });
+    }
+  });
 }
 
 // ── The Emoji Alphabet, Proper ───────────────────────
@@ -750,6 +1012,9 @@ module.exports = {
   generatePassword, derivePassword, getSalt,
   buildHashSeed, buildAuditDigest,
   estimateMasterEntropy, estimatePasswordEntropy, classifyStrength,
+  analyzeMasterStrength, estimateShannonBits, formatCrackTime,
+  generateDicewareMaster, loadDicewareWordlist,
+  checkMasterPwned,
   EMOJI_UNICODE, SYMBOLS,
-  MIN_WORD_LENGTH, MAX_WORD_LENGTH, DEFAULT_WORD_LENGTH, DEFAULT_VERSION,
+  MIN_WORD_LENGTH, MAX_WORD_LENGTH, DEFAULT_WORD_LENGTH, DEFAULT_VERSION
 };
