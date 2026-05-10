@@ -16,11 +16,17 @@ describe('Phase 3: MCP Server Tools', async () => {
   checkEntropy = tools.find(t => t.name === 'check_entropy');
   auditParams = tools.find(t => t.name === 'audit_params');
 
-  it('loads all three tools', () => {
-    assert.strictEqual(tools.length, 3);
+  let generateSeedPhrase, generateEmojiPhrase;
+
+  it('loads all five tools', () => {
+    assert.strictEqual(tools.length, 5);
     assert.ok(generatePassword, 'generate_password tool exists');
     assert.ok(checkEntropy, 'check_entropy tool exists');
     assert.ok(auditParams, 'audit_params tool exists');
+    generateSeedPhrase = tools.find(t => t.name === 'generate_seed_phrase');
+    generateEmojiPhrase = tools.find(t => t.name === 'generate_emoji_phrase');
+    assert.ok(generateSeedPhrase, 'generate_seed_phrase tool exists');
+    assert.ok(generateEmojiPhrase, 'generate_emoji_phrase tool exists');
   });
 
   it('generate_password returns correct length', async () => {
@@ -146,5 +152,52 @@ describe('Phase 3: MCP Server Tools', async () => {
     const digestA = a.content[0].text.match(/Audit digest: ([a-f0-9]+)/)[1];
     const digestB = b.content[0].text.match(/Audit digest: ([a-f0-9]+)/)[1];
     assert.strictEqual(digestA, digestB);
+  });
+
+  // ── Phase 5: Seed Phrase + Emoji Phrase Tools ──
+
+  it('generate_seed_phrase returns correct word count', async () => {
+    const result = await generateSeedPhrase.execute({ master: 'test-seed', wordCount: 12 });
+    assert.ok(!result.isError);
+    const phrase = result.content[0].text.split('\n')[0];
+    assert.strictEqual(phrase.split(' ').length, 12);
+  });
+
+  it('generate_seed_phrase is deterministic', async () => {
+    const a = await generateSeedPhrase.execute({ master: 'same-master', wordCount: 24 });
+    const b = await generateSeedPhrase.execute({ master: 'same-master', wordCount: 24 });
+    const phraseA = a.content[0].text.split('\n')[0];
+    const phraseB = b.content[0].text.split('\n')[0];
+    assert.strictEqual(phraseA, phraseB);
+  });
+
+  it('generate_seed_phrase rejects empty master', async () => {
+    const result = await generateSeedPhrase.execute({ master: '', wordCount: 12 });
+    assert.strictEqual(result.isError, true);
+  });
+
+  it('generate_seed_phrase rejects invalid word count', async () => {
+    const result = await generateSeedPhrase.execute({ master: 'test', wordCount: 13 });
+    assert.strictEqual(result.isError, true);
+  });
+
+  it('generate_emoji_phrase returns correct symbol count', async () => {
+    const result = await generateEmojiPhrase.execute({ master: 'test-emoji', count: 12 });
+    assert.ok(!result.isError);
+    const phrase = result.content[0].text.split('\n')[0];
+    assert.strictEqual(phrase.split(' ').length, 12);
+  });
+
+  it('generate_emoji_phrase is deterministic', async () => {
+    const a = await generateEmojiPhrase.execute({ master: 'same-emoji', count: 8 });
+    const b = await generateEmojiPhrase.execute({ master: 'same-emoji', count: 8 });
+    const phraseA = a.content[0].text.split('\n')[0];
+    const phraseB = b.content[0].text.split('\n')[0];
+    assert.strictEqual(phraseA, phraseB);
+  });
+
+  it('generate_emoji_phrase rejects count > 64', async () => {
+    const result = await generateEmojiPhrase.execute({ master: 'test', count: 65 });
+    assert.strictEqual(result.isError, true);
   });
 });
