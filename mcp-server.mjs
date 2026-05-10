@@ -21,6 +21,11 @@ const {
   estimatePasswordEntropy,
   classifyStrength,
   buildAuditDigest,
+  generateSeedPhrase,
+  validateMnemonic,
+  generateEmojiPhrase,
+  estimateEmojiPhraseEntropy,
+  BIP39_CONFIG,
   MIN_WORD_LENGTH,
   MAX_WORD_LENGTH,
   DEFAULT_WORD_LENGTH,
@@ -147,6 +152,51 @@ const tools = [
       return { content: [{ type: 'text', text: `Audit digest: ${digest}\nCompare this with another device using identical parameters. If the digest matches, every byte of input matches (except master secret, by design).` }] }
     },
   },
+
+  {
+    name: 'generate_seed_phrase',
+    description: 'Generate a deterministic BIP-39 seed phrase from a master secret. Supports 12, 15, 18, 21, or 24 words. The phrase is reproducible: same master and wordCount always produce the same mnemonic.',
+    inputSchema: z.object({
+      master: z.string().min(1).describe('Master secret (brain-wallet seed). This is the root of all derived phrases — keep it safe.'),
+      wordCount: z.number().int().min(12).max(24).default(24).describe('Number of words: 12, 15, 18, 21, or 24.'),
+    }),
+    execute: async ({ master, wordCount }) => {
+      if (!master) {
+        return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
+      }
+      if (!BIP39_CONFIG[wordCount]) {
+        return { content: [{ type: 'text', text: `Error: wordCount must be one of ${Object.keys(BIP39_CONFIG).join(', ')}` }], isError: true }
+      }
+      try {
+        const phrase = generateSeedPhrase(master, wordCount)
+        const bits = BIP39_CONFIG[wordCount].entropyBits
+        return { content: [{ type: 'text', text: `${phrase}\n\n(${wordCount} words, ~${bits} bits from wordlist, capped by master entropy)` }] }
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }
+      }
+    },
+  },
+
+  {
+    name: 'generate_emoji_phrase',
+    description: 'Generate a deterministic emoji phrase from a master secret using The Emoji Alphabet. Curated single-codepoint symbols organized in categories (nature, creatures, objects, places, remainder). Supports 1–64 symbols.',
+    inputSchema: z.object({
+      master: z.string().min(1).describe('Master secret (brain-wallet seed).'),
+      count: z.number().int().min(1).max(64).default(12).describe('Number of emoji symbols (1–64).'),
+    }),
+    execute: async ({ master, count }) => {
+      if (!master) {
+        return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
+      }
+      try {
+        const phrase = generateEmojiPhrase(master, count)
+        const bits = estimateEmojiPhraseEntropy(count)
+        return { content: [{ type: 'text', text: `${phrase}\n\n(${count} symbols, ~${bits} bits theoretical)` }] }
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }
+      }
+    },
+  },
 ]
 
 // ── Server Startup ────────────────────────────────────
@@ -162,7 +212,7 @@ if (isMain) {
   server = createSimpleServer(serverConfig)
   await server.start()
   console.log(`[Passgen MCP] Ready — ${tools.length} tools loaded`)
-  console.log(`[Passgen MCP] Tools: generate_password | check_entropy | audit_params`)
+  console.log(`[Passgen MCP] Tools: generate_password | generate_seed_phrase | generate_emoji_phrase | check_entropy | audit_params`)
 }
 
 export { server, TRANSPORT, tools }
