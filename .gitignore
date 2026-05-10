@@ -1,6 +1,7 @@
-node_modules/
-passgen-mcpserver.mjs.tmp
-package-lock.json
-*.log
-.serena/
-*.tmp
+# Build artifacts
+build-*.js
+fix-*.js
+patch-*.js
+
+# Test artifacts
+test/debug.test.js
