@@ -1,8 +1,26 @@
 #!/usr/bin/env node
 /**
  * Passgen MCP Server
- * Wraps the passgen core as an MCP-compatible tool server.
- * Phase 3 — Stateless Deterministic Passphrases, Everywhere
+ *
+ * @module passgen-mcp
+ * @author Freeman King & Guan
+ * @license MIT
+ * @version 1.0.0
+ *
+ * @description
+ * Wraps the passgen core as an MCP-compatible tool server, exposing 9 tools
+ * for integration with agentic AI systems (Claude, GPT, local LLMs via MCP).
+ *
+ * Transport modes: stdio (default for agents), http, sse
+ * All tools are stateless and deterministic — same inputs always produce
+ * the same outputs. No configuration file required.
+ *
+ * Security model:
+ *   - Master secrets are accepted as tool parameters but NEVER logged or stored
+ *   - Audit digests exclude the master secret by design
+ *   - k-Anonymity breach checking sends only the first 5 SHA-1 hash chars
+ *
+ * @phase Phase 3 — MCP Integration + Phase 7 Security Modeling
  */
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
