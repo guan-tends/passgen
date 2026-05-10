@@ -277,7 +277,7 @@ function showHelp() {
 Passgen — Stateless Deterministic Passphrase Generator
 Usage: passgen [options]
 
-Options:
+Password Mode (default):
   -s, --service <name>     Service/URI (default: "service")
   -i, --identity <name>    User identity (default: "user")
   -m, --master <secret>    Master secret / brain-wallet seed
@@ -287,16 +287,26 @@ Options:
   -E, --emoji              Include emoji (not recommended for most services)
   --symbol-ratio <n>       Symbol replacement ratio % [0–100] (default: 32)
   --emoji-ratio <n>        Emoji replacement ratio % [0–100] (default: 24)
-  --version <n>            Derivation version [1|2] (default: 2; v1 = legacy concat)
-  --entropy                Show entropy estimates alongside password
-  --audit                  Show derivation audit digest for debugging
+  --version <n>            Derivation version [1|2] (default: 2)
+
+Seed Phrase Mode:
+  --seed-phrase            Generate a BIP-39 compliant mnemonic
+  --word-count <n>         Word count [12|15|18|21|24] (default: 24)
+  --validate <phrase>      Validate a BIP-39 mnemonic phrase
+
+Emoji Phrase Mode:
+  --emoji-phrase           Generate an emoji mnemonic phrase
+  --symbol-count <n>       How many emoji symbols [1–64] (default: 12)
+  --list-emoji-set         Show the Emoji Alphabet categories
+
+Info & Audit:
+  --entropy                Show entropy estimates
+  --audit                  Show derivation audit digest
   -h, --help               Show this help
 
 Master secret may also be set via PASSGEN_MASTER env var.
 
-Version Notes:
-  v1  Legacy bare concatenation (backward compatible with Aurora OS)
-  v2  Null-delimited namespace encoding (default, prevents collision attacks)
+Modes are mutually exclusive — the first mode flag wins.
 `);
 }
 
@@ -314,6 +324,11 @@ function parseArgs(argv) {
     version: DEFAULT_VERSION,
     showEntropy: false,
     showAudit: false,
+    mode: 'password',      // 'password' | 'seed-phrase' | 'emoji-phrase'
+    wordCount: 24,
+    symbolCount: 12,
+    validatePhrase: null,
+    listEmojiSet: false,
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -330,6 +345,12 @@ function parseArgs(argv) {
       case '--symbol-ratio': opts.symbolRatio = parseInt(next()) / 100; break;
       case '--emoji-ratio': opts.emojiRatio = parseInt(next()) / 100; break;
       case '--version': opts.version = parseInt(next()); break;
+      case '--seed-phrase': opts.mode = 'seed-phrase'; break;
+      case '--emoji-phrase': opts.mode = 'emoji-phrase'; break;
+      case '--word-count': opts.wordCount = parseInt(next()); break;
+      case '--symbol-count': opts.symbolCount = parseInt(next()); break;
+      case '--validate': opts.mode = 'validate'; opts.validatePhrase = next(); break;
+      case '--list-emoji-set': opts.mode = 'list'; break;
       case '--entropy': opts.showEntropy = true; break;
       case '--audit': opts.showAudit = true; break;
       case '-h': case '--help': showHelp(); process.exit(0); break;
@@ -337,13 +358,31 @@ function parseArgs(argv) {
     }
   }
 
-  if (isNaN(opts.length) || opts.length < MIN_WORD_LENGTH) opts.length = MIN_WORD_LENGTH;
-  if (opts.length > MAX_WORD_LENGTH) opts.length = MAX_WORD_LENGTH;
+  // Validate ranges
+  if (opts.mode === 'password' && isNaN(opts.length)) opts.length = MIN_WORD_LENGTH;
+  if (opts.mode === 'password' && opts.length < MIN_WORD_LENGTH) opts.length = MIN_WORD_LENGTH;
+  if (opts.mode === 'password' && opts.length > MAX_WORD_LENGTH) opts.length = MAX_WORD_LENGTH;
+
+  if (opts.mode === 'seed-phrase') {
+    const validCounts = [12, 15, 18, 21, 24];
+    if (!validCounts.includes(opts.wordCount)) {
+      console.error(`Error: --word-count must be one of: ${validCounts.join(', ')}`);
+      process.exit(1);
+    }
+  }
+
+  if (opts.mode === 'emoji-phrase') {
+    if (isNaN(opts.symbolCount) || opts.symbolCount < 1 || opts.symbolCount > 64) {
+      console.error('Error: --symbol-count must be between 1 and 64');
+      process.exit(1);
+    }
+  }
 
   opts.symbolRatio = Math.max(0, Math.min(1, opts.symbolRatio));
   opts.emojiRatio = Math.max(0, Math.min(1, opts.emojiRatio));
 
-  if (!opts.master) {
+  // Master required for generators; not required for --validate or --list
+  if (!opts.master && opts.mode !== 'validate' && opts.mode !== 'list') {
     console.error('Error: --master required or set PASSGEN_MASTER env var');
     process.exit(1);
   }
@@ -351,49 +390,95 @@ function parseArgs(argv) {
   return opts;
 }
 
+function showEmojiSet() {
+  console.log('The Emoji Alphabet — Curated Symbol Set');
+  console.log(`Total symbols: ${EMOJI_ALPHABET_SIZE}`);
+  console.log('');
+  Object.entries(EMOJI_ALPHABET).forEach(([category, symbols]) => {
+    console.log(`  ${category}: ${symbols.length} symbols`);
+    console.log(`    ${symbols.slice(0, 16).join(' ')}${symbols.length > 16 ? ' ...' : ''}`);
+  });
+  console.log('');
+  console.log('Design principles:');
+  console.log('  • Single Unicode codepoint only (no ZWJ sequences)');
+  console.log('  • No skin-tone modifiers');
+  console.log('  • Visually distinctive across categories');
+  console.log('  • Bit-precise encoding: 10 bits per symbol (1024 max slots)');
+}
+
 function main(argv) {
   const cli = parseArgs(argv);
 
-  const password = derivePassword({
-    uri: cli.service,
-    user: cli.identity,
-    secret: cli.master,
-    useSymbols: cli.symbols,
-    useCapitalLetters: cli.caps,
-    useEmoji: cli.emoji,
-    lengthOption: cli.length,
-    symbolRatio: cli.symbolRatio,
-    emojiRatio: cli.emojiRatio,
-    version: cli.version,
-  });
+  switch (cli.mode) {
+    case 'seed-phrase': {
+      const phrase = generateSeedPhrase(cli.master, cli.wordCount);
+      const entropy = estimateMasterEntropy(cli.master);
+      console.log(phrase);
+      if (cli.showEntropy) {
+        console.log(`# Master entropy: ~${entropy} bits (${classifyStrength(entropy)})`);
+        console.log(`# Phrase words: ${cli.wordCount} (${BIP39_CONFIG[cli.wordCount].entropyBits} bits + ${BIP39_CONFIG[cli.wordCount].checksumBits} checksum)`);
+      }
+      break;
+    }
 
-  if (cli.showEntropy) {
-    const masterBits = estimateMasterEntropy(cli.master);
-    const passBits = estimatePasswordEntropy(password);
-    console.log(`# Password: ${password}`);
-    console.log(`# Master entropy estimate: ~${masterBits} bits (${classifyStrength(masterBits)})`);
-    console.log(`# Password entropy estimate: ~${passBits} bits`);
-  } else if (cli.showAudit) {
-    const auditDigest = buildAuditDigest({
-      uri: cli.service, user: cli.identity,
-      lengthOption: cli.length,
-      useSymbols: cli.symbols, useCapitalLetters: cli.caps, useEmoji: cli.emoji,
-      symbolRatio: cli.symbolRatio, emojiRatio: cli.emojiRatio,
-      version: cli.version,
-    });
-    console.log(`# Password: ${password}`);
-    console.log(`# Audit digest: ${auditDigest.slice(0, 32)}…`);
-  } else {
-    console.log(password);
+    case 'emoji-phrase': {
+      const phrase = generateEmojiPhrase(cli.master, cli.symbolCount);
+      const entropy = estimateEmojiPhraseEntropy(cli.symbolCount);
+      console.log(phrase);
+      if (cli.showEntropy) {
+        console.log(`# Symbols: ${cli.symbolCount}  |  Entropy: ~${entropy} bits  |  Set size: ${EMOJI_ALPHABET_SIZE}`);
+      }
+      break;
+    }
+
+    case 'validate': {
+      const isValid = validateMnemonic(cli.validatePhrase);
+      console.log(isValid ? '✅ Valid BIP-39 mnemonic' : '❌ Invalid BIP-39 mnemonic');
+      process.exit(isValid ? 0 : 1);
+    }
+
+    case 'list': {
+      showEmojiSet();
+      break;
+    }
+
+    case 'password':
+    default: {
+      const password = derivePassword({
+        uri: cli.service,
+        user: cli.identity,
+        secret: cli.master,
+        useSymbols: cli.symbols,
+        useCapitalLetters: cli.caps,
+        useEmoji: cli.emoji,
+        lengthOption: cli.length,
+        symbolRatio: cli.symbolRatio,
+        emojiRatio: cli.emojiRatio,
+        version: cli.version,
+      });
+
+      if (cli.showEntropy) {
+        const masterBits = estimateMasterEntropy(cli.master);
+        const passBits = estimatePasswordEntropy(password);
+        console.log(`# Password: ${password}`);
+        console.log(`# Master entropy estimate: ~${masterBits} bits (${classifyStrength(masterBits)})`);
+        console.log(`# Password entropy estimate: ~${passBits} bits`);
+      } else if (cli.showAudit) {
+        const auditDigest = buildAuditDigest({
+          uri: cli.service, user: cli.identity,
+          lengthOption: cli.length,
+          useSymbols: cli.symbols, useCapitalLetters: cli.caps, useEmoji: cli.emoji,
+          symbolRatio: cli.symbolRatio, emojiRatio: cli.emojiRatio,
+          version: cli.version,
+        });
+        console.log(`# Password: ${password}`);
+        console.log(`# Audit digest: ${auditDigest.slice(0, 32)}…`);
+      } else {
+        console.log(password);
+      }
+    }
   }
 }
-
-// ── Entry ─────────────────────────────────────────────
-
-if (require.main === module) {
-  main(process.argv);
-}
-
 
 // ── BIP-39 Seed Phrase Generator ─────────────────────
 
@@ -552,27 +637,42 @@ const EMOJI_ALPHABET = {
     '😄','😅','😆','😇','😈','😉','😊','😋','😌','😍','😎','😏','😐','😑','😒','😓',
     '😔','😕','😖','😗','😘','😙','😚','😛','😜','😝','😞','😟','😠','😡','😢','😣'
   ],
-  // Remainder: 512 symbols (512–1023) — diverse single-codepoint emoji
+  // Remainder: 345 symbols (512–856) — single-codepoint only, no ZWJ/flags/modifiers
   remainder: [
-    '😤','😥','😦','😧','😨','😩','😪','😫','😬','😭','😮','😯','😰','😱','😲','😳',
-    '😴','😵','😶','😷','😸','😹','😺','😻','😼','😽','😾','😿','🙀','🙁','🙂','🙃',
-    '🙄','🙅','🙆','🙇','🙈','🙉','🙊','🙋','🙌','🙍','🙎','🙏','🚀','🚁','🚂','🚃',
-    '🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚋','🚌','🚍','🚎','🚏','🚐','🚑','🚒','🚓',
-    '🚔','🚕','🚖','🚗','🚘','🚙','🚚','🚛','🚜','🚝','🚞','🚟','🚠','🚡','🚢','🚣',
-    '🚤','🚥','🚦','🚧','🚨','🚩','🚪','🚫','🚬','🚭','🚮','🚯','🚰','🚱','🚲','🚳',
-    '🚴','🚵','🚶','🚷','🚸','🚹','🚺','🚻','🚼','🚽','🚾','🚿','🛀','🛁','🛂','🛃',
-    '🛄','🛅','🛋','🛌','🛍','🛎','🛏','🛐','🛑','🛒','🛠','🛡','🛢','🛣','🛤','🛥',
-    '🛩','🛫','🛬','🛰','🛳','🛴','🛵','🛶','🛷','🛸','🛹','🛺','🛻','🛼','🟠','🟡',
-    '🟢','🔵','🟣','🟤','⚫','⚪','🟥','🟧','🟨','🟩','🟦','🟪','🟫','⬛','⬜','🟤',
-    '🔴','🟠','🟡','🟢','🔵','🟣','🟤','⚫','⚪','🟥','🟧','🟨','🟩','🟦','🟪','🟫',
-    '⬛','⬜','◼','◻','◾','◽','▪','▫','🔶','🔷','🔸','🔹','🔺','🔻','💠','🔘',
-    '🔳','🔲','🏳','🏴','🏁','🚩','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇺🇳','🇦🇨','🇦🇩','🇦🇪','🇦🇫','🇦🇬','🇦🇮',
-    '🇦🇯','🇦🇰','🇦🇱','🇦🇲','🇦🇴','🇦🇶','🇦🇷','🇦🇸','🇦🇹','🇦🇺','🇦🇼','🇦🇽','🇦🇿','🇧🇦','🇧🇧','🇧🇩',
-    '🇧🇪','🇧🇫','🇧🇬','🇧🇭','🇧🇮','🇧🇯','🇧🇱','🇧🇲','🇧🇳','🇧🇴','🇧🇶','🇧🇷','🇧🇸','🇧🇹','🇧🇻','🇧🇼'
-  ]
+    '😀','😁','😂','😃','😄','😅','😆','😇','😈','😉','😊','😋','😌','😍','😎','😏',
+    '😐','😑','😒','😓','😔','😕','😖','😗','😘','😙','😚','😛','😜','😝','😞','😟',
+    '😠','😡','😢','😣','😤','😥','😦','😧','😨','😩','😪','😫','😬','😭','😮','😯',
+    '😰','😱','😲','😳','😴','😵','😶','😷','😸','😹','😺','😻','😼','😽','😾','😿',
+    '🙀','🙁','🙂','🙃','🙄','🙅','🙆','🙇','🙈','🙉','🙊','🙋','🙌','🙍','🙎','🙏',
+    '⚧','☦','☸','☪','☮','☯','☄','☃','☕','⚓','⛽','⛺','⛷','⛹',
+    '♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','⛎',
+    '🆎','🆑','🆒','🆓','🆔','🆕','🆖','🆗','🆘','🆙','🆚',
+    '🈁','🈚','🈯','🈲','🈳','🈴','🈵','🈶','🈸','🈹','🈺','🉐','🉑',
+    '💮','💯','💢','💬','💭','📛','🔰',
+    '◼','◻','◾','◽','▪','▫','▬','▭','▮','▯',
+    '►','◄','▲','▼','◤','◥','◢','◣','◿','◹',
+    '⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+    '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳',
+    '⚫','⚪','🔴','🔵','⬛','⬜',
+    '❤','💔','💕','💖','💗','💘','💙','💚','💛','💜','💝','💞','💟',
+    '⬆','⬇','⬅','➡','↗','↘','↙','↖','↕','↔','↩','↪',
+    '⤴','⤵','🔃','🔄',
+    '🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛',
+    '🕜','🕝','🕞','🕟','🕠','🕡','🕢','🕣','🕤','🕥','🕦','🕧',
+    '🀄','🃏',
+    '🎵','🎶','🎼','🎤','🎧','🎷','🎸','🎹','🎺','🎻',
+    '🎱','🎳','⛳','🏓','🏸','🏒','🏑','🏏','🎿','🏂',
+    '⛅','☁','☀','⚡','❄','⛄',
+    '🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰',
+    '🚀','🚁','🚂','🚌','🚎','🚐','🚑','🚒','🚓','🚕','🚗','🚙','🚚','🛵','🚲',
+    '🔧','🔨','🔩','🔪','⛏','⚒','🛠','⛓',
+    '💻','📱','📲','☎','📞','📟','📠','📺','📻','📷','📸','📹','📼',
+    '💰','💴','💵','💶','💷','💸','💳',
+    '📦','📫','📪','📬','📭','📮','🗳','✉','✂','✏','✒',
+    '🕯','🛡','🗿','🗽','🗼','🗻','🏔','⛰','🌋','🗾'
+  ],
 };
 
-// Flatten into a single array for bit-indexed access
 const EMOJI_ALPHABET_FLAT = [
   ...EMOJI_ALPHABET.nature,
   ...EMOJI_ALPHABET.creatures,
@@ -632,6 +732,12 @@ function estimateEmojiPhraseEntropy(symbolCount) {
   // Each symbol carries log2(set_size) bits
   const bitsPerSymbol = Math.log2(EMOJI_ALPHABET_SIZE);
   return Math.floor(symbolCount * bitsPerSymbol);
+}
+
+// ── Entry ─────────────────────────────────────────────
+
+if (require.main === module) {
+  main(process.argv);
 }
 
 module.exports = {
