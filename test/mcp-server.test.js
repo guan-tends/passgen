@@ -18,13 +18,15 @@ describe('Phase 3: MCP Server Tools', async () => {
 
   let generateSeedPhrase, generateEmojiPhrase;
 
-  it('loads all five tools', () => {
-    assert.strictEqual(tools.length, 5);
+  // Resolve all tool handles at suite level
+  generateSeedPhrase = tools.find(t => t.name === 'generate_seed_phrase');
+  generateEmojiPhrase = tools.find(t => t.name === 'generate_emoji_phrase');
+
+  it('loads all nine tools', () => {
+    assert.strictEqual(tools.length, 9);
     assert.ok(generatePassword, 'generate_password tool exists');
     assert.ok(checkEntropy, 'check_entropy tool exists');
     assert.ok(auditParams, 'audit_params tool exists');
-    generateSeedPhrase = tools.find(t => t.name === 'generate_seed_phrase');
-    generateEmojiPhrase = tools.find(t => t.name === 'generate_emoji_phrase');
     assert.ok(generateSeedPhrase, 'generate_seed_phrase tool exists');
     assert.ok(generateEmojiPhrase, 'generate_emoji_phrase tool exists');
   });
