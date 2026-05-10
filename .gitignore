@@ -1,0 +1,6 @@
+node_modules/
+passgen-mcpserver.mjs.tmp
+package-lock.json
+*.log
+.serena/
+*.tmp
