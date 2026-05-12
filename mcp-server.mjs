@@ -25,7 +25,7 @@
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { createSimpleServer } from '@l4t/mcp-ai/dist/simple-server/index.js'
+import { createSimpleServer } from '@guan-tends/mcp-ai/dist/simple-server/index.js'
 import { z } from 'zod'
 
 // Dynamic require to import the CJS passgen core
