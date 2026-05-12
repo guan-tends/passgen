@@ -1,6 +1,6 @@
 {
-  "name": "passgen",
-  "version": "1.0.0",
+  "name": "@guan-tends/passgen",
+  "version": "0.1.0",
   "description": "Stateless deterministic passphrase generator — extracted from Aurora OS",
   "main": "passgen.js",
   "bin": {
@@ -23,7 +23,7 @@
     "sha3",
     "mcp"
   ],
-  "author": "Freeman King & Guan",
+  "author": "Freeman King & Guan <just.guan@proton.me>",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
@@ -35,5 +35,13 @@
   "exports": {
     ".": "./passgen.js",
     "./mcp": "./mcp-server.mjs"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guan-tends/passgen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/guan-tends/passgen/issues"
+  },
+  "homepage": "https://github.com/guan-tends/passgen#readme"
 }
