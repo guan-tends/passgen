@@ -25,7 +25,7 @@
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { createSimpleServer } from '@guan-tends/mcp-ai/dist/simple-server/index.js'
+import { createSimpleServer } from '@guan-tends/mcp-ai/simple-server/index.js'
 import { z } from 'zod'
 
 // Dynamic require to import the CJS passgen core
@@ -85,7 +85,7 @@ const tools = [
   {
     name: 'generate_password',
     description: 'Derive a deterministic, cryptographically-stretched password from a master secret and service identity. Stateless: same inputs always produce the same password.',
-    inputSchema: z.object({
+    inputSchema: {
       master: z.string().min(1).describe('Master secret (brain-wallet seed). Keep this safe — it is the root of all derived passwords.'),
       service: z.string().min(1).default('service').describe('Service name or URI (e.g. "github.com", "mybank").'),
       identity: z.string().min(1).default('user').describe('User identity or account name (e.g. "personal", "work").'),
@@ -96,7 +96,7 @@ const tools = [
       symbolRatio: z.number().min(0).max(100).default(DEFAULT_SYMBOL_RATIO).describe('Percentage of characters to replace with symbols when --symbols is true.'),
       emojiRatio: z.number().min(0).max(100).default(24).describe('Percentage of characters to replace with emoji when --emoji is true.'),
       version: z.number().int().min(1).max(2).default(DEFAULT_VERSION).describe('Derivation version. v1=legacy bare concat (backward compat); v2=null-delimited encoding (secure, default).'),
-    }),
+    },
     execute: async ({ master, service, identity, length, symbols, caps, emoji, symbolRatio, emojiRatio, version }) => {
       if (!master) {
         return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
@@ -124,9 +124,9 @@ const tools = [
   {
     name: 'analyze_master_strength',
     description: 'Deep analysis of a master secret or password: Shannon entropy, pattern detection (dictionary words, keyboard walks, sequential digits, repeated characters, common passwords), strength classification, estimated crack time, and actionable recommendations. Phase 7 powered.',
-    inputSchema: z.object({
+    inputSchema: {
       secret: z.string().min(1).describe('Master secret or password to analyze deeply.'),
-    }),
+    },
     execute: async ({ secret }) => {
       try {
         const result = analyzeMasterStrength(secret)
@@ -155,10 +155,10 @@ const tools = [
   {
     name: 'check_entropy',
     description: 'Estimate the entropy (strength) of a master secret or generated password. Returns bits of entropy and a human-readable classification. Legacy tool — use analyze_master_strength for deeper analysis.',
-    inputSchema: z.object({
+    inputSchema: {
       master: z.string().optional().describe('Master secret to evaluate. If provided, estimates its entropy.'),
       password: z.string().optional().describe('Generated password to evaluate. If provided, estimates its Shannon entropy.'),
-    }),
+    },
     execute: async ({ master, password }) => {
       const lines = []
       if (master) {
@@ -179,7 +179,7 @@ const tools = [
   {
     name: 'audit_params',
     description: 'Generate a deterministic audit digest of derivation parameters. Used to debug "why is my password different on another device?" The digest excludes the master secret for privacy.',
-    inputSchema: z.object({
+    inputSchema: {
       service: z.string().default('service').describe('Service name.'),
       identity: z.string().default('user').describe('User identity.'),
       length: z.number().int().default(DEFAULT_WORD_LENGTH).describe('Password length.'),
@@ -189,7 +189,7 @@ const tools = [
       symbolRatio: z.number().default(DEFAULT_SYMBOL_RATIO).describe('Symbol ratio %.'),
       emojiRatio: z.number().default(24).describe('Emoji ratio %.'),
       version: z.number().int().default(DEFAULT_VERSION).describe('Derivation version.'),
-    }),
+    },
     execute: async (params) => {
       const digest = buildAuditDigest({
         uri: params.service,
@@ -210,10 +210,10 @@ const tools = [
   {
     name: 'generate_seed_phrase',
     description: 'Generate a deterministic BIP-39 seed phrase from a master secret. Supports 12, 15, 18, 21, or 24 words. The phrase is reproducible: same master and wordCount always produce the same mnemonic.',
-    inputSchema: z.object({
+    inputSchema: {
       master: z.string().min(1).describe('Master secret (brain-wallet seed). This is the root of all derived phrases — keep it safe.'),
       wordCount: z.number().int().min(12).max(24).default(24).describe('Number of words: 12, 15, 18, 21, or 24.'),
-    }),
+    },
     execute: async ({ master, wordCount }) => {
       if (!master) {
         return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
@@ -234,10 +234,10 @@ const tools = [
   {
     name: 'generate_emoji_phrase',
     description: 'Generate a deterministic emoji phrase from a master secret using The Emoji Alphabet. Curated single-codepoint symbols organized in categories (nature, creatures, objects, places, remainder). Supports 1–64 symbols.',
-    inputSchema: z.object({
+    inputSchema: {
       master: z.string().min(1).describe('Master secret (brain-wallet seed).'),
       count: z.number().int().min(1).max(64).default(12).describe('Number of emoji symbols (1–64).'),
-    }),
+    },
     execute: async ({ master, count }) => {
       if (!master) {
         return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
@@ -255,10 +255,10 @@ const tools = [
   {
     name: 'generate_diceware_passphrase',
     description: 'Generate a Diceware passphrase using CSPRNG and the EFF 7776-word list. Each word is ~12.9 bits of entropy. Supports 6–10 words. Stateless: same inputs produce the same passphrase via cryptographic PRNG seeded from master secret.',
-    inputSchema: z.object({
+    inputSchema: {
       master: z.string().min(1).describe('Master secret to seed the CSPRNG. Must be strong — this is NOT memorization-friendly like traditional Diceware rolling.'),
       wordCount: z.number().int().min(6).max(10).default(8).describe('Number of words: 6–10 (default 8 = ~103 bits).'),
-    }),
+    },
     execute: async ({ master, wordCount }) => {
       if (!master) {
         return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
@@ -275,9 +275,9 @@ const tools = [
   {
     name: 'check_master_breach',
     description: 'Check if a master secret has appeared in known data breaches using HaveIBeenPwned k-Anonymity API. Only the first 5 chars of the SHA-1 hash are sent to the API. Privacy-preserving.',
-    inputSchema: z.object({
+    inputSchema: {
       master: z.string().min(1).describe('Master secret to check against breach databases.'),
-    }),
+    },
     execute: async ({ master }) => {
       if (!master) {
         return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
@@ -297,7 +297,7 @@ const tools = [
   {
     name: 'get_diceware_wordlist_info',
     description: 'Get information about the EFF Large Wordlist used for Diceware passphrase generation. Returns word count and a sample of the first few words.',
-    inputSchema: z.object({}),
+    inputSchema: {},
     execute: async () => {
       try {
         const wl = loadDicewareWordlist()
