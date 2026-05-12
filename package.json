@@ -29,7 +29,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@l4t/mcp-ai": "file:/home/guan/src/mcp-ai",
+    "@guan-tends/mcp-ai": "^1.6.3-guan.0",
     "zod": "^3.22.0"
   },
   "exports": {
