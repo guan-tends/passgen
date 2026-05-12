@@ -1,3 +1,7 @@
+# Dependencies
+node_modules/
+*.log
+
 # Build artifacts
 build-*.js
 fix-*.js
@@ -5,3 +9,11 @@ patch-*.js
 
 # Test artifacts
 test/debug.test.js
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
