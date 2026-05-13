@@ -1042,7 +1042,7 @@ const EMOJI_SETS_A512 = [
  * @note Most services do not support emoji in passwords. This is for
  *   mnemonic construction and visual verification, not direct password use.
  */
-function generateEmojiPhrase(master, symbolCount = 12) {
+function generateEmojiPhrase(master, symbolCount = 12, setIdentifier = 'emoji-1024', salt = '') {
   if (!master || typeof master !== 'string') {
     throw new Error('Master secret is required');
   }
@@ -1050,28 +1050,38 @@ function generateEmojiPhrase(master, symbolCount = 12) {
     throw new Error('symbolCount must be between 1 and 64');
   }
 
-  // Derive a hash stream from master
-  // We use rehash to get multiple SHA3 outputs, treated as a bit stream
-  let hash = sha3(master + ':emoji-alphabet-v1');
-  let hashIndex = 0;
-  let bitBuffer = BigInt('0x' + hash);
-  let bitsAvailable = hash.length * 4; // hex chars * 4 bits each
+  const set = EMOJI_SETS[setIdentifier];
+  if (!set || !set.symbols) {
+    throw new Error(`Invalid symbol set: ${setIdentifier}`);
+  }
+  const setSize = set.size;
+  const bitsPerSymbol = set.bits;
+
+  // Initial hash: salt + "\0" + seed + "\0" + set_id + "\0" + "emoji"
+  const domain = '\x00';
+  let hash = sha3_512(salt + domain + master + domain + setIdentifier + domain + 'emoji');
+  const digests = [hash];
+  const bitsNeeded = symbolCount * bitsPerSymbol;
+
+  // Rehash as needed
+  let iteration = 1;
+  while (digests.length * 512 < bitsNeeded) {
+    hash = sha3_512(hash + domain + String(iteration));
+    digests.push(hash);
+    iteration++;
+  }
+
+  // Build continuous big-endian bit stream from hex digests
+  const bitStream = digests.map(d =>
+    BigInt('0x' + d).toString(2).padStart(512, '0')
+  ).join('');
 
   const symbols = [];
-  while (symbols.length < symbolCount) {
-    if (bitsAvailable < 10) {
-      // Need more bits — rehash
-      hash = sha3(hash + String(hashIndex++));
-      bitBuffer = BigInt('0x' + hash);
-      bitsAvailable = hash.length * 4;
-    }
-
-    // Take next 10 bits (for 1024-symbol set)
-    const index = Number(bitBuffer & BigInt(0x3FF)); // 10 bits = 0-1023
-    symbols.push(EMOJI_ALPHABET_FLAT[index % EMOJI_ALPHABET_SIZE]);
-
-    bitBuffer = bitBuffer >> BigInt(10);
-    bitsAvailable -= 10;
+  for (let k = 0; k < symbolCount; k++) {
+    const bitOffset = k * bitsPerSymbol;
+    const chunk = bitStream.slice(bitOffset, bitOffset + bitsPerSymbol);
+    const index = parseInt(chunk, 2) % setSize;
+    symbols.push(set.symbols[index]);
   }
 
   return symbols.join(' ');
