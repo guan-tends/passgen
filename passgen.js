@@ -96,6 +96,12 @@ function sha3(s) {
   return hasher.digest('hex');
 }
 
+function sha3_512(s) {
+  const hasher = crypto.createHash('sha3-512');
+  hasher.update(String(s), 'utf8');
+  return hasher.digest('hex');
+}
+
 // Extend base36 output deterministically to reach target length
 function extendWord(word, seedHex, targetLen) {
   let extended = word;
