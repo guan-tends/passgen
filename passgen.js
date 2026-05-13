@@ -613,21 +613,21 @@ function parseArgs(argv) {
   return opts;
 }
 
-function showEmojiSet() {
-  console.log('The Emoji Alphabet — Curated Symbol Set');
-  console.log(`Total symbols: ${EMOJI_ALPHABET_SIZE}`);
+console.log('The Emoji Alphabet — Canonical Symbol Sets (DEME Draft 00)');
   console.log('');
-  Object.entries(EMOJI_ALPHABET).forEach(([category, symbols]) => {
-    console.log(`  ${category}: ${symbols.length} symbols`);
-    console.log(`    ${symbols.slice(0, 16).join(' ')}${symbols.length > 16 ? ' ...' : ''}`);
+  Object.entries(EMOJI_SETS).forEach(([setId, set]) => {
+    console.log(`  ${setId}: ${set.size} symbols (${set.bits} bits each)`);
+    console.log(`    ${set.symbols.slice(0, 16).join(' ')}${set.symbols.length > 16 ? ' ...' : ''}`);
   });
   console.log('');
-  console.log('Design principles:');
-  console.log('  • Single Unicode codepoint only (no ZWJ sequences)');
-  console.log('  • No skin-tone modifiers');
-  console.log('  • Visually distinctive across categories');
-  console.log('  • Bit-precise encoding: 10 bits per symbol (1024 max slots)');
-}
+  console.log('  Usage:');
+  console.log('    passgen.js emoji-phrase --set=<set> --count=<n>');
+  console.log('');
+  console.log('  Design principles:');
+  console.log('    • Single Unicode codepoint only (no ZWJ sequences)');
+  console.log('    • No skin-tone modifiers');
+  console.log('    • No flag/country-code sequences');
+  console.log('    • Bit-precise encoding: no truncation waste');
 
 function main(argv) {
   const cli = parseArgs(argv);
