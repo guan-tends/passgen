@@ -1089,10 +1089,12 @@ function generateEmojiPhrase(master, symbolCount = 12, setIdentifier = 'emoji-10
 
 // ── Entropy Calculator for Emoji Alphabet ──────────────
 
-function estimateEmojiPhraseEntropy(symbolCount) {
-  // Each symbol carries log2(set_size) bits
-  const bitsPerSymbol = Math.log2(EMOJI_ALPHABET_SIZE);
-  return Math.floor(symbolCount * bitsPerSymbol);
+function estimateEmojiPhraseEntropy(symbolCount, setIdentifier = 'emoji-1024') {
+  const set = EMOJI_SETS[setIdentifier];
+  if (!set || !set.symbols) {
+    throw new Error(`Invalid symbol set: ${setIdentifier}`);
+  }
+  return Math.floor(symbolCount * set.bits);
 }
 
 // ── Entry ─────────────────────────────────────────────
