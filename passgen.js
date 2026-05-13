@@ -649,7 +649,7 @@ function main(argv) {
       const entropy = estimateEmojiPhraseEntropy(cli.symbolCount);
       console.log(phrase);
       if (cli.showEntropy) {
-        console.log(`# Symbols: ${cli.symbolCount}  |  Entropy: ~${entropy} bits  |  Set size: ${EMOJI_ALPHABET_SIZE}`);
+        console.log(`# Symbols: ${cli.symbolCount}  |  Entropy: ~${entropy} bits  |  Set size: ${EMOJI_SETS['emoji-1024'].size} (emoji-1024)`);
       }
       break;
     }
@@ -1106,8 +1106,7 @@ if (require.main === module) {
 module.exports = {
   generateSeedPhrase, validateMnemonic,
   generateEmojiPhrase, estimateEmojiPhraseEntropy,
-  BIP39_WORDLIST, BIP39_CONFIG, EMOJI_ALPHABET, EMOJI_ALPHABET_FLAT,
-  EMOJI_ALPHABET_SIZE,
+  BIP39_WORDLIST, BIP39_CONFIG, EMOJI_SETS,
   cyrb53, cyrb128, sfc32, sfc32Factory,
   sha3, rehash0, rehash1, extendWord,
   generatePassword, derivePassword, getSalt,
