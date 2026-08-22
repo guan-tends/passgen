@@ -5,7 +5,6 @@ const {
   rehash0, rehash1, extendWord,
   generatePassword, derivePassword, getSalt,
   EMOJI_UNICODE, SYMBOLS,
-  MIN_WORD_LENGTH, MAX_WORD_LENGTH, DEFAULT_WORD_LENGTH,
 } = require('../passgen.js');
 
 // ── Primitive Tests ───────────────────────────────────

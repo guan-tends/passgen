@@ -1,7 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  analyzeMasterStrength, estimateShannonBits, formatCrackTime,
+  analyzeMasterStrength, formatCrackTime,
   generateDicewareMaster, loadDicewareWordlist,
   checkMasterPwned
 } = require('../passgen.js');

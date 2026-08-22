@@ -4,7 +4,6 @@ const {
   generateSeedPhrase,
   validateMnemonic,
   BIP39_WORDLIST,
-  BIP39_CONFIG,
 } = require('../passgen.js');
 
 // ── BIP-39 Test Vectors (official spec) ───────────────

@@ -9,7 +9,6 @@ const {
   buildHashSeed,
   estimateMasterEntropy, estimatePasswordEntropy, classifyStrength,
   buildAuditDigest,
-  sha3,
 } = require('../passgen');
 
 describe('Phase 2: Delimiter / Collision Resistance', () => {

@@ -332,8 +332,9 @@ function buildHashSeed(opts) {
 }
 
 function buildAuditDigest(opts) {
-  const { uri, user, secret, lengthOption, useSymbols, useCapitalLetters, useEmoji, symbolRatio, emojiRatio, version } = opts;
-  // Deterministic audit hash without exposing secrets
+  const { uri, user, secret: _secret, lengthOption, useSymbols, useCapitalLetters, useEmoji, symbolRatio, emojiRatio, version } = opts;
+  // Deterministic audit hash without exposing secrets.
+  // _secret is intentionally excluded from the digest (privacy by design).
   return sha3(JSON.stringify({
     uri, user, lengthOption, useSymbols, useCapitalLetters, useEmoji,
     symbolRatio, emojiRatio, version
@@ -678,6 +679,7 @@ function main(argv) {
       const isValid = validateMnemonic(cli.validatePhrase);
       console.log(isValid ? '✅ Valid BIP-39 mnemonic' : '❌ Invalid BIP-39 mnemonic');
       process.exit(isValid ? 0 : 1);
+      break;
     }
 
     case 'list': {
@@ -881,7 +883,7 @@ function loadDicewareWordlist() {
     const lines = data.trim().split('\n');
     const words = lines.map(line => line.split('\t')[1]).filter(Boolean);
     return words;
-  } catch (err) {
+  } catch {
     return [];
   }
 }

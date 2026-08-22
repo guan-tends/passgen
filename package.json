@@ -53,5 +53,11 @@
   "bugs": {
     "url": "https://github.com/guan-tends/passgen/issues"
   },
-  "homepage": "https://github.com/guan-tends/passgen#readme"
+  "homepage": "https://github.com/guan-tends/passgen#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6"
+  }
 }

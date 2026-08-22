@@ -40,7 +40,6 @@ const {
   classifyStrength,
   buildAuditDigest,
   generateSeedPhrase,
-  validateMnemonic,
   generateEmojiPhrase,
   estimateEmojiPhraseEntropy,
   analyzeMasterStrength,
