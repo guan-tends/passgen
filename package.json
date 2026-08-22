@@ -29,7 +29,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@guan-tends/mcp-ai": "^1.6.3-guan.0",
+    "@guan-tends/mcp-ai": "^1.6.6-guan.0",
     "zod": "^3.22.0"
   },
   "files": [

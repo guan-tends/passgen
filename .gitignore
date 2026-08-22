@@ -17,3 +17,9 @@ test/debug.test.js
 # OS files
 .DS_Store
 Thumbs.db
+
+# Serena project config (local, not for distribution)
+.serena/
+
+# Unrelated projects (should not be in this repo)
+dfhack-mcp/

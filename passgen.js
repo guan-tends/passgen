@@ -773,14 +773,6 @@ const BIP39_CONFIG = {
 };
 
 /**
- * Generate a BIP-39 compliant deterministic seed phrase
- * from a master secret (brain-wallet style).
- *
- * @param {string} master — The master secret
- * @param {number} wordCount — 12, 15, 18, 21, or 24 (default: 24)
- * @returns {string} — Space-separated mnemonic phrase
- */
-/**
  * Generate a deterministic BIP-39 mnemonic phrase from a master secret.
  *
  * @intent Produce a reproducible seed phrase for memory aids, offline backup,
@@ -1103,7 +1095,18 @@ const EMOJI_SETS_A512 = [
       '\u{1F4FA}','\u{1F4FB}',
 ];
 
-// Build derived sets at module load
+// Build derived sets at module load.
+//
+// Design note on emoji-2048 duplicates: The 2048-symbol set intentionally
+// contains duplicate entries. The constraint is single-codepoint emoji only
+// (no ZWJ sequences, no skin-tone modifiers, no flags) curated for visual
+// distinction across memory-palace categories. There are not enough
+// qualifying single-codepoint emoji to fill 2048 unique slots. Rather than
+// relaxing the visual constraints or introducing multi-codepoint sequences,
+// the 1024-symbol pool is padded to 2048 with repeats. This enables
+// bit-precise 11-bit indexing while maintaining the visual quality bar.
+// Effective entropy per symbol is slightly below 11 bits but well above 10.
+// See: draft-guan-emoji-mnemonic-encoding (DEME Draft 00).
 (function() {
   const base = EMOJI_SETS['emoji-256'].symbols;
   EMOJI_SETS['emoji-512'].symbols  = [...base, ...EMOJI_SETS_A256].slice(0, 512);
@@ -1115,14 +1118,6 @@ const EMOJI_SETS_A512 = [
 
 
 
-/**
- * Generate a deterministic emoji phrase from a master secret
- * using The Emoji Alphabet encoding scheme.
- *
- * @param {string} master — The master secret
- * @param {number} symbolCount — How many symbols (default: 12)
- * @returns {string} — Space-separated emoji phrase
- */
 /**
  * Generate a deterministic emoji phrase from a master secret.
  *
