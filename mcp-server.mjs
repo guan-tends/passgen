@@ -254,15 +254,11 @@ const tools = [
 
   {
     name: 'generate_diceware_passphrase',
-    description: 'Generate a Diceware passphrase using CSPRNG and the EFF 7776-word list. Each word is ~12.9 bits of entropy. Supports 6–10 words. Stateless: same inputs produce the same passphrase via cryptographic PRNG seeded from master secret.',
+    description: 'Generate a Diceware passphrase using CSPRNG and the EFF 7776-word list. Each word is ~12.9 bits of entropy. Supports 6–10 words. NOT deterministic — each call produces a fresh random passphrase using crypto.randomInt(). For deterministic output, use the password generator instead.',
     inputSchema: {
-      master: z.string().min(1).describe('Master secret to seed the CSPRNG. Must be strong — this is NOT memorization-friendly like traditional Diceware rolling.'),
       wordCount: z.number().int().min(6).max(10).default(8).describe('Number of words: 6–10 (default 8 = ~103 bits).'),
     },
-    execute: async ({ master, wordCount }) => {
-      if (!master) {
-        return { content: [{ type: 'text', text: 'Error: master secret is required' }], isError: true }
-      }
+    execute: async ({ wordCount }) => {
       try {
         const result = generateDicewareMaster(wordCount)
         return { content: [{ type: 'text', text: `${result.phrase}\n\n(${wordCount} words, ~${result.entropyBits} bits, ${result.strengthClass})` }] }

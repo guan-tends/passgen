@@ -32,6 +32,16 @@
     "@guan-tends/mcp-ai": "^1.6.3-guan.0",
     "zod": "^3.22.0"
   },
+  "files": [
+    "passgen.js",
+    "mcp-server.mjs",
+    "bip39-wordlist.json",
+    "eff_large_wordlist.txt",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "package.json"
+  ],
   "exports": {
     ".": "./passgen.js",
     "./mcp": "./mcp-server.mjs"

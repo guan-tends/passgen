@@ -365,7 +365,22 @@ const EMOJI_UNICODE = [
  * @returns {number} Fixed salt derived from mathematical constants.
  */
 function getSalt() {
-  return cyrb53(`${0x9E3779B9}${0x243F6A88}${0xB7E15162}${1337 ^ 0xDEADBEEF}`);
+  // Fixed deterministic salt derived from "nothing-up-my-sleeve" mathematical
+  // constants — numbers chosen for their mathematical significance, resisting
+  // accusations of backdooring. The salt is PUBLIC; security comes from master
+  // entropy, not salt secrecy (stateless design constraint).
+  //
+  // Constants (fractional parts of irrational numbers, standard in cryptography):
+  //   0x9E3779B9 — golden ratio (φ), Knuth's multiplicative hash constant
+  //   0x243F6A88 — π, used in Blowfish S-box initialization
+  //   0xB7E15162 — e (Euler's number), used in AES round constant derivation
+  //   1337 ^ 0xDEADBEEF — leet XOR classic hex sentinel
+  //
+  // Derived via SHA3-256 for consistency with the rest of the codebase.
+  // Previously used cyrb53 (53-bit non-crypto hash) — no practical security
+  // difference since the salt is public, but SHA3-256 is the idiomatic choice
+  // for a cryptographic tool.
+  return sha3(`${0x9E3779B9}${0x243F6A88}${0xB7E15162}${1337 ^ 0xDEADBEEF}`);
 }
 
 /**
@@ -474,7 +489,11 @@ function generatePassword(opts) {
  * @note For production use, always call derivePassword(); generatePassword()
  *   is the single-round inner loop.
  */
-function derivePassword(opts) {
+function derivePassword(originalOpts) {
+  // Clone opts to prevent mutation of the caller's object during the
+  // 24-round state mutation loop. Without this, uri/user/secret are
+  // overwritten in-place, corrupting any reused opts object.
+  const opts = { ...originalOpts };
   let final = generatePassword(opts);
   for (let i = 0; i < (3 << 3); i++) {
     opts.uri = String(cyrb53(opts.uri, final));
@@ -884,8 +903,9 @@ function generateDicewareMaster(wordCount = 8) {
   for (let w = 0; w < wordCount; w++) {
     let roll = 0;
     for (let d = 0; d < 5; d++) {
-      const byte = crypto.randomBytes(1)[0];
-      roll = roll * 6 + (byte % 6);
+      // crypto.randomInt(0, 6) provides unbiased uniform random [0, 5].
+      // Previously used byte % 6 which has a 43/42 distribution bias.
+      roll = roll * 6 + crypto.randomInt(0, 6);
     }
     words.push(wordlist[roll]);
   }
