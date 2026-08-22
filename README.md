@@ -39,7 +39,7 @@ Same inputs always produce the same outputs. Different services always produce d
 
 ### Historical context
 
-Passgen was extracted from **Aurora OS**, a research operating system for agentic AI infrastructure. The original implementation was embedded in the OS boot chain. This standalone package preserves the same derivation logic for broader use.
+Passgen was originally developed as part of Aurora OS, a research platform for agentic AI infrastructure. This standalone package preserves the same derivation logic for broader use.
 
 ---
 
@@ -214,7 +214,7 @@ passgen --generate-master [--word-count 6–10]
 
 Uses the **EFF Large Wordlist** (7776 words) with CSPRNG dice rolls. Each word = ~12.9 bits.
 
-⚠️ This generator uses `crypto.randomBytes()` — not deterministic from a master secret. For deterministic Diceware-style output, use the password generator with `length=32` and no symbols.
+⚠️ This generator uses `crypto.randomInt()` (CSPRNG) — not deterministic from a master secret. For deterministic Diceware-style output, use the password generator with `length=32` and no symbols.
 
 ---
 
@@ -411,13 +411,12 @@ validateMnemonic('abandon ability ...'); // → boolean
 const {
   generateEmojiPhrase,
   estimateEmojiPhraseEntropy,
-  EMOJI_ALPHABET,
-  EMOJI_ALPHABET_SIZE,
+  EMOJI_SETS,
 } = require('passgen');
 
 generateEmojiPhrase('master', 12);     // → string
-estimateEmojiPhraseEntropy(12);         // → ~120
-EMOJI_ALPHABET.nature.length;           // → 128
+estimateEmojiPhraseEntropy(12);         // → ~120 bits (12 × log2(1024))
+EMOJI_SETS['emoji-1024'].size;         // → 1024
 ```
 
 ### Analysis
@@ -500,15 +499,18 @@ The estimates assume random guessing. Real attackers use **smarter strategies**.
 
 ## Changelog
 
-| Phase | Date | Description |
-|-------|------|-------------|
-| Phase 1 | — | Extraction from Aurora OS, core password generator |
-| Phase 2 | — | Security hardening: delimiters, entropy audit, version param, namespace hardening |
-| Phase 3 | — | MCP server integration: stdio/http/sse transport, 9 tools |
-| Phase 4 | — | Aligned schema: Zod validation, canonical parameter names |
-| Phase 5 | — | Tool naming: unified PascalCase tool names |
-| Phase 6 | — | Configuration management: centralized config, per-tool defaults |
-| Phase 7 | — | Security modeling: pattern detection, crack-time estimation, HIBP integration, Diceware, Emoji Alphabet |
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+
+| Phase | Description |
+|-------|-------------|
+| Phase 1 | Core password generator |
+| Phase 2 | Security hardening: delimiters, entropy audit, version param, namespace hardening |
+| Phase 3 | MCP server integration: stdio/http/sse transport, 9 tools |
+| Phase 4 | Aligned schema: Zod validation, canonical parameter names |
+| Phase 5 | Tool naming: unified PascalCase tool names |
+| Phase 6 | Configuration management: centralized config, per-tool defaults |
+| Phase 7 | Security modeling: pattern detection, crack-time estimation, HIBP integration, Diceware, Emoji Alphabet |
+| v0.3.0 | Code review + security audit: fix false determinism, modulo bias, input mutation, salt consistency, tooling, CI |
 
 ---
 
