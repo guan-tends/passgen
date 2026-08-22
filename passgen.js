@@ -453,10 +453,19 @@ function buildHashSeed(opts) {
   return `\t${trueUri}\0${trueUser}\0${trueSecret}\0${trueSalt}`;
 }
 
+/**
+ * buildAuditDigest — Deterministic audit hash of derivation parameters.
+ * Produces a SHA3-256 digest that uniquely identifies a derivation configuration
+ * WITHOUT exposing the master secret. Used for cross-device parameter verification.
+ *
+ * The secret is intentionally excluded from the digest (privacy by design) —
+ * two different master secrets with identical other parameters produce the same digest.
+ *
+ * @param {object} opts — Derivation options (uri, user, secret, length, etc.)
+ * @returns {string} 64-character hex SHA3-256 digest
+ */
 function buildAuditDigest(opts) {
   const { uri, user, secret: _secret, lengthOption, useSymbols, useCapitalLetters, useEmoji, symbolRatio, emojiRatio, version } = opts;
-  // Deterministic audit hash without exposing secrets.
-  // _secret is intentionally excluded from the digest (privacy by design).
   return sha3(JSON.stringify({
     uri, user, lengthOption, useSymbols, useCapitalLetters, useEmoji,
     symbolRatio, emojiRatio, version
@@ -629,6 +638,9 @@ function derivePassword(originalOpts) {
 
 // ── CLI ───────────────────────────────────────────────
 
+/**
+ * showHelp — Print CLI usage and available flags to stdout.
+ */
 function showHelp() {
   console.log(`
 Passgen — Stateless Deterministic Passphrase Generator
@@ -672,6 +684,14 @@ Modes are mutually exclusive — the first mode flag wins.
 `);
 }
 
+/**
+ * parseArgs — Parse command-line arguments into a structured options object.
+ * Modes are mutually exclusive (first mode flag wins). Info flags combine
+ * with any mode.
+ *
+ * @param {string[]} argv — process.argv (full, including node path and script)
+ * @returns {object} Parsed options with mode, service, identity, master, etc.
+ */
 function parseArgs(argv) {
   const opts = {
     service: 'service',
@@ -755,7 +775,12 @@ function parseArgs(argv) {
   return opts;
 }
 
-function showEmojiSet() {console.log('The Emoji Alphabet — Canonical Symbol Sets (DEME Draft 00)');
+/**
+ * showEmojiSet — Display all available Emoji Alphabet symbol sets with
+ * sizes, bits-per-symbol, and sample symbols. Output to stdout.
+ */
+function showEmojiSet() {
+  console.log('The Emoji Alphabet — Canonical Symbol Sets (DEME Draft 00)');
   console.log('');
   Object.entries(EMOJI_SETS).forEach(([setId, set]) => {
     console.log(`  ${setId}: ${set.size} symbols (${set.bits} bits each)`);
@@ -772,6 +797,13 @@ function showEmojiSet() {console.log('The Emoji Alphabet — Canonical Symbol Se
   console.log('    • Bit-precise encoding: no truncation waste');
 }
 
+/**
+ * main — CLI entry point. Parses args and dispatches to the appropriate
+ * generator/analyzer. Modes: password (default), seed-phrase, emoji-phrase,
+ * validate, generate-master, check-master, list-emoji-set, wordlist.
+ *
+ * @param {string[]} argv — process.argv (full array)
+ */
 function main(argv) {
   const cli = parseArgs(argv);
 
