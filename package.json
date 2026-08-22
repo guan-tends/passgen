@@ -1,7 +1,7 @@
 {
   "name": "@guan-tends/passgen",
-  "version": "0.3.0",
-  "description": "Stateless deterministic passphrase generator — extracted from Aurora OS",
+  "version": "0.3.1",
+  "description": "Stateless deterministic passphrase generator",
   "main": "passgen.js",
   "bin": {
     "passgen": "./passgen.js",
@@ -23,7 +23,7 @@
     "sha3",
     "mcp"
   ],
-  "author": "the maintainer King & Guan <just.guan@proton.me>",
+  "author": "David Newman & Guan <just.guan@proton.me>",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

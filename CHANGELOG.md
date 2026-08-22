@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-22
+
+### Fixed
+- Remove all Aurora OS references from README, source files, and package.json
+  (description, header comment, version table). Aurora OS was a browser-based
+  decentralized OS experiment — passgen was never part of its boot chain.
+- Replace "the maintainer King" with "David Newman" in LICENSE, package.json author,
+  CHANGELOG, source file headers, and README license section.
+- Correct MCP server header: "All tools are stateless and deterministic" →
+  "Most tools are deterministic. Diceware uses crypto.randomInt() (CSPRNG)."
+
+### Added
+- Donations section in README with crypto wallet addresses (Solana, EVM, XRP)
+- JSDoc documentation for all exported functions:
+  cyrb53, cyrb128, sfc32, sfc32Factory, rehash0, rehash1, sha3, sha3_512,
+  extendWord, estimateMasterEntropy, estimatePasswordEntropy, classifyStrength,
+  estimateShannonBits, formatCrackTime, loadDicewareWordlist, generateDicewareMaster,
+  analyzeMasterStrength, estimateEmojiPhraseEntropy
+- JSDoc for MCP server utility functions: detectTransport, buildServerConfig
+
 ### Fixed
 - **BREAKING**: Diceware MCP tool no longer accepts `master` parameter. The tool
   uses `crypto.randomInt()` (CSPRNG) and is NOT deterministic. Previous description
@@ -19,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rest of the codebase. Constants documented with provenance.
 
 ### Added
-- LICENSE file (MIT, Copyright (c) 2026 the maintainer King & Guan)
+- LICENSE file (MIT, Copyright (c) 2026 David Newman & Guan)
 - `files` field in package.json to control npm tarball contents
 - ESLint configuration (eslint:recommended + Node.js globals)
 - Prettier configuration

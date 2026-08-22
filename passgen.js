@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Passgen — Stateless deterministic passphrase generator
-// Extracted from Aurora OS (c) the maintainer King, ported by Guan
+// Copyright (c) 2026 David Newman & Guan
 // License: MIT
-// PHASE 2 — Security Hardening: delimiters, entropy audit, version param, namespace hardening
+// Phase 2 — Security hardening: delimiters, entropy audit, version param, namespace hardening
 
 const crypto = require('crypto');
 
@@ -13,7 +13,16 @@ const DEFAULT_VERSION = 2;
 
 // ── Inline Primitives ─────────────────────────────────
 
-// cyrb53 (c) 2018-2022 bryc — 53-bit hash
+/**
+ * cyrb53 — 53-bit non-cryptographic hash function.
+ * Used for internal state mutation during the 24-round derivation loop.
+ * NOT for security — uses Math.imul with known constants.
+ *
+ * @param {string} s — Input string to hash
+ * @param {number} [seed=0x9E3779B9] — Seed value (golden ratio fractional)
+ * @returns {number} 53-bit hash as a positive integer
+ * @author bryc (2018-2022)
+ */
 function cyrb53(s, seed = 0x9E3779B9) {
   let h1 = 0xdeadbeef ^ seed;
   let h2 = 0x41c6ce57 ^ seed;
@@ -27,7 +36,14 @@ function cyrb53(s, seed = 0x9E3779B9) {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-// cyrb128 — 128-bit hash, seeds sfc32
+/**
+ * cyrb128 — 128-bit non-cryptographic hash. Seeds the sfc32 PRNG for
+ * deterministic aesthetic placement (symbol/emoji position selection).
+ *
+ * @param {string} s — Input string
+ * @param {number[]} [seeds=[0,0,0,0]] — Initial seed state
+ * @returns {number[]} Four 32-bit state values for sfc32
+ */
 function cyrb128(s, seeds = [0, 0, 0, 0]) {
   let [seed0, seed1, seed2, seed3] = seeds;
   let h1 = 1779033703 ^ seed0;
@@ -53,7 +69,15 @@ function cyrb128(s, seeds = [0, 0, 0, 0]) {
   ];
 }
 
-// sfc32 (c) Chris Doty-Humphreys — PractRand-passing PRNG
+/**
+ * sfc32 — Small Fast Counter PRNG (PractRand-passing).
+ * Used for deterministic aesthetic placement only — NOT for entropy generation.
+ * Seeded from cyrb128 to produce a reproducible [0, 1) stream.
+ *
+ * @param {number} a b c d — 32-bit seed state values
+ * @returns {function} PRNG function returning floats in [0, 1)
+ * @author Chris Doty-Humphreys
+ */
 function sfc32(a, b, c, d) {
   return function () {
     a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
@@ -68,12 +92,27 @@ function sfc32(a, b, c, d) {
   };
 }
 
+/**
+ * sfc32Factory — Create a seeded sfc32 PRNG from any value.
+ * Convenience wrapper: hash seed → cyrb128 → sfc32.
+ *
+ * @param {*} seed — Any value (will be stringified)
+ * @returns {function} Seeded PRNG function
+ */
 function sfc32Factory(seed = 0) {
   const [seed0, seed1, seed2, seed3] = cyrb128(String(seed));
   return sfc32(seed0, seed1, seed2, seed3);
 }
 
-// rehash — chain a hash function n times
+/**
+ * rehash0 — Chain a hash function n times, collecting all intermediate results.
+ * Used for multi-word generation from a single seed.
+ *
+ * @param {string} s — Initial input
+ * @param {number} n — Number of iterations
+ * @param {function} hashFn — Hash function (e.g. sha3)
+ * @returns {string[]} Array of n hash outputs
+ */
 function rehash0(s, n, hashFn) {
   if (n <= 0) return [];
   const results = [hashFn(s)];
@@ -82,6 +121,15 @@ function rehash0(s, n, hashFn) {
   return results;
 }
 
+/**
+ * rehash1 — Chain a hash function n times, returning only the final result.
+ * Used for iterative strengthening of a single hash.
+ *
+ * @param {string} s — Initial input
+ * @param {number} n — Number of iterations
+ * @param {function} hashFn — Hash function
+ * @returns {string} Final hash output
+ */
 function rehash1(s, n, hashFn) {
   if (n <= 0) return '';
   let result = s;
@@ -89,20 +137,42 @@ function rehash1(s, n, hashFn) {
   return result;
 }
 
-// SHA3-256 via Node.js crypto
+/**
+ * sha3 — SHA3-256 cryptographic hash via Node.js crypto.
+ * The primary hashing primitive used throughout passgen for derivation,
+ * salt computation, and audit digests.
+ *
+ * @param {*} s — Input (will be stringified)
+ * @returns {string} 64-character hex string
+ */
 function sha3(s) {
   const hasher = crypto.createHash('sha3-256');
   hasher.update(String(s), 'utf8');
   return hasher.digest('hex');
 }
 
+/**
+ * sha3_512 — SHA3-512 cryptographic hash via Node.js crypto.
+ * Used for emoji phrase encoding (DEME Draft 00 spec).
+ *
+ * @param {*} s — Input (will be stringified)
+ * @returns {string} 128-character hex string
+ */
 function sha3_512(s) {
   const hasher = crypto.createHash('sha3-512');
   hasher.update(String(s), 'utf8');
   return hasher.digest('hex');
 }
 
-// Extend base36 output deterministically to reach target length
+/**
+ * extendWord — Deterministically extend a base36 word to reach target length.
+ * Appends characters from SHA3-256 of the seed + counter, converted to base36.
+ *
+ * @param {string} word — Initial base36 word
+ * @param {string} seedHex — Hex seed for deterministic extension
+ * @param {number} targetLen — Desired final length
+ * @returns {string} Extended word (may exceed targetLen, truncated by caller)
+ */
 function extendWord(word, seedHex, targetLen) {
   let extended = word;
   let counter = 1;
@@ -116,6 +186,14 @@ function extendWord(word, seedHex, targetLen) {
 
 // ── Entropy Utilities ─────────────────────────────────
 
+/**
+ * estimateMasterEntropy — Character-class based entropy estimate for a master secret.
+ * Calculates bits-per-char from the character set (lower, upper, digits, symbols)
+ * with a conservative floor of 26 to avoid overestimating poor inputs.
+ *
+ * @param {string} master — The master secret to analyze
+ * @returns {number} Estimated bits of entropy
+ */
 function estimateMasterEntropy(master) {
   if (!master || master.length === 0) return 0;
   const len = master.length;
@@ -130,6 +208,13 @@ function estimateMasterEntropy(master) {
   return Math.floor(len * bitsPerChar);
 }
 
+/**
+ * estimatePasswordEntropy — Shannon entropy approximation of a generated password.
+ * Uses character frequency to compute per-character entropy, multiplied by length.
+ *
+ * @param {string} password — The generated password to analyze
+ * @returns {number} Estimated Shannon entropy bits
+ */
 function estimatePasswordEntropy(password) {
   // Shannon entropy approximation via unique character frequency
   const freq = {};
@@ -142,6 +227,12 @@ function estimatePasswordEntropy(password) {
   return Math.round(entropy * password.length);
 }
 
+/**
+ * classifyStrength — Map entropy bits to a human-readable strength label.
+ *
+ * @param {number} bits — Entropy in bits
+ * @returns {string} Strength classification with emoji indicator
+ */
 function classifyStrength(bits) {
   if (bits >= 200) return 'Very Strong 💪';
   if (bits >= 150) return 'Strong ✅';
@@ -173,6 +264,13 @@ const KEYBOARD_WALKS = [
 
 const REVERSE_SUBSTITUTIONS = { '@':'a','$':'s','1':'i','!':'i','0':'o','3':'e','7':'t','9':'g','8':'b','5':'s' };
 
+/**
+ * estimateShannonBits — Shannon entropy of a string based on character frequency.
+ * Used by analyzeMasterStrength to compute raw entropy before pattern adjustments.
+ *
+ * @param {string} master — Input string
+ * @returns {number} Shannon entropy in bits
+ */
 function estimateShannonBits(master) {
   if (!master || master.length === 0) return 0;
   const freqs = {};
@@ -185,6 +283,23 @@ function estimateShannonBits(master) {
   return Math.round(entropy * master.length);
 }
 
+/**
+ * analyzeMasterStrength — Deep security analysis of a master secret.
+ * Detects dictionary words, keyboard walks, sequential digits, repeated
+ * characters, and substitution masks. Computes Shannon entropy, pattern-adjusted
+ * entropy, estimated crack time, and strength classification.
+ *
+ * @param {string} master — The master secret to analyze
+ * @returns {{
+ *   shannonBits: number,
+ *   patternAdjustedBits: number,
+ *   estimatedCrackTimeSeconds: number,
+ *   strengthClass: string,
+ *   patternsDetected: Array<{type: string, severity: string, match?: string}>,
+ *   warnings: string[],
+ *   recommendedAction: string
+ * }}
+ */
 function analyzeMasterStrength(master) {
   const patterns = [];
   const warnings = [];
@@ -280,6 +395,13 @@ function analyzeMasterStrength(master) {
   };
 }
 
+/**
+ * formatCrackTime — Human-readable crack time from seconds.
+ * Scales from "instant" to "heat death of universe".
+ *
+ * @param {number} seconds — Estimated crack time in seconds
+ * @returns {string} Human-readable duration string
+ */
 function formatCrackTime(seconds) {
   if (seconds < 1e-9) return "instant";
   if (seconds < 1)     return "< 1 second";
@@ -310,7 +432,7 @@ function formatCrackTime(seconds) {
  *
  * @version 1 — Legacy: bare concatenation. Vulnerable to dangling-suffix attacks
  *   where ('ba','nk') and ('b','ank') produce identical seeds. Preserved for
- *   backward compatibility with Aurora OS outputs.
+ *   backward compatibility with v1 outputs.
  * @version 2 (default) — Null-delimited encoding: `\turi\0user\0secret\0salt`.
  *   Unambiguous boundary parsing prevents all concatenation collision attacks.
  */
@@ -318,7 +440,7 @@ function buildHashSeed(opts) {
   const { uri, user, secret, version } = opts;
   const salt = getSalt();
   if (version === 1) {
-    // Legacy: bare concatenation (backward compatible with Aurora)
+    // Legacy: bare concatenation (backward compatible with v1)
     return `${uri}${user}${secret}${salt}`;
   }
   // Version 2+: null-delimited namespace encoding
@@ -877,6 +999,12 @@ function validateMnemonic(phrase) {
 
 const fs = require("fs");
 const path = require("path");
+/**
+ * loadDicewareWordlist — Load the EFF Large Wordlist (7776 words) from disk.
+ * Reads eff_large_wordlist.txt, extracts the word column (tab-delimited).
+ *
+ * @returns {string[]} Array of 7776 words, or empty array if file missing
+ */
 function loadDicewareWordlist() {
   try {
     const data = fs.readFileSync(path.join(__dirname, "eff_large_wordlist.txt"), "utf8");
@@ -888,6 +1016,15 @@ function loadDicewareWordlist() {
   }
 }
 
+/**
+ * generateDicewareMaster — Generate a Diceware passphrase using CSPRNG.
+ * Uses crypto.randomInt(0, 6) for unbiased dice rolls (5 rolls per word).
+ * NOT deterministic from a master secret — each call produces fresh randomness.
+ *
+ * @param {number} [wordCount=8] — Number of words (6–10, default 8 = ~103 bits)
+ * @returns {{words: string[], entropyBits: number, strengthClass: string, phrase: string}}
+ *   Object with words array, entropy estimate, strength classification, and space-separated phrase
+ */
 function generateDicewareMaster(wordCount = 8) {
   const wordlist = loadDicewareWordlist();
   if (wordlist.length < 7776) {
@@ -1182,6 +1319,14 @@ function generateEmojiPhrase(master, symbolCount = 12, setIdentifier = 'emoji-10
 
 // ── Entropy Calculator for Emoji Alphabet ──────────────
 
+/**
+ * estimateEmojiPhraseEntropy — Theoretical entropy of an emoji phrase.
+ * Calculates symbolCount × bits-per-symbol from the set's metadata.
+ *
+ * @param {number} symbolCount — Number of symbols in the phrase
+ * @param {string} [setIdentifier='emoji-1024'] — Symbol set identifier (256/512/1024/2048)
+ * @returns {number} Theoretical entropy in bits
+ */
 function estimateEmojiPhraseEntropy(symbolCount, setIdentifier = 'emoji-1024') {
   const set = EMOJI_SETS[setIdentifier];
   if (!set || !set.symbols) {

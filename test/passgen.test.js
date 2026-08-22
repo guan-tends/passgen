@@ -262,7 +262,7 @@ describe('derivePassword', () => {
 
   test('full options run without error', () => {
     const p = derivePassword({
-      uri: 'bank.example.com', user: 'freeman',
+      uri: 'bank.example.com', user: 'account-holder',
       secret: 'my_brain_wallet_phrase_123',
       useSymbols: true, useCapitalLetters: true, useEmoji: false,
       lengthOption: 48, symbolRatio: 0.32, emojiRatio: 0,

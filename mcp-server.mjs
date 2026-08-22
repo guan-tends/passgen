@@ -3,7 +3,7 @@
  * Passgen MCP Server
  *
  * @module passgen-mcp
- * @author the maintainer King & Guan
+ * @author David Newman & Guan
  * @license MIT
  * @version 1.0.0
  *
@@ -12,8 +12,9 @@
  * for integration with agentic AI systems (Claude, GPT, local LLMs via MCP).
  *
  * Transport modes: stdio (default for agents), http, sse
- * All tools are stateless and deterministic — same inputs always produce
- * the same outputs. No configuration file required.
+ * Most tools are stateless and deterministic — same inputs always produce
+ * the same outputs. The Diceware passphrase generator is the exception:
+ * it uses crypto.randomInt() (CSPRNG) and produces fresh output each call.
  *
  * Security model:
  *   - Master secrets are accepted as tool parameters but NEVER logged or stored
@@ -56,6 +57,11 @@ const {
 } = passgen
 
 // ── Transport Detection ───────────────────────────────
+/**
+ * detectTransport — Determine MCP transport mode from env, args, or TTY state.
+ * Priority: PASSGEN_MCP_TRANSPORT env → CLI flags → TTY detection → http default.
+ * @returns {'stdio'|'http'|'sse'} Transport mode
+ */
 function detectTransport() {
   const env = process.env.PASSGEN_MCP_TRANSPORT?.toLowerCase()
   if (env && ['stdio', 'http', 'sse'].includes(env)) return env
@@ -67,6 +73,11 @@ function detectTransport() {
   return 'http'
 }
 
+/**
+ * buildServerConfig — Construct MCP server config for the selected transport.
+ * @param {'stdio'|'http'|'sse'} transport — Transport mode
+ * @returns {{name: string, version: string, server: object}} Server config
+ */
 function buildServerConfig(transport) {
   const base = { name: 'passgen-mcp', version: '1.0.0' }
   switch (transport) {

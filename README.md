@@ -1,6 +1,6 @@
 # Passgen
 
-> Stateless deterministic passphrase generator — extracted from Aurora OS  
+> Stateless deterministic passphrase generator  
 > License: MIT | Node.js ≥ 20
 
 ---
@@ -39,7 +39,7 @@ Same inputs always produce the same outputs. Different services always produce d
 
 ### Historical context
 
-Passgen was originally developed as part of Aurora OS, a research platform for agentic AI infrastructure. This standalone package preserves the same derivation logic for broader use.
+Passgen was originally developed as a standalone passphrase generation tool. This package preserves the same derivation logic for broader use.
 
 ---
 
@@ -127,7 +127,7 @@ master + service + identity
 |---|---|---|
 | **Encoding** | Bare concatenation: `uri+user+secret+salt` | Null-delimited: `\turi\0user\0secret\0salt` |
 | **Collision risk** | Service `('ba', 'nk')` collides with `('b', 'ank')` | Unambiguous boundary parsing |
-| **Use** | Backward compatibility with Aurora OS outputs | All new installations |
+| **Use** | Backward compatibility with v1 outputs | All new installations |
 
 Version 2 prevents **dangling-suffix attacks** where attackers exploit ambiguous concatenation to produce identical hashes from different credential triples.
 
@@ -514,6 +514,20 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 
+## Sponsors
+
+If passgen saves you time, consider sponsoring ongoing maintenance and development.
+
+### Donate
+
+| Chain | Address |
+|-------|---------|
+| **Solana** | `Eu8wQcW68TKMs1a6eqzZu8znzU52QLqQugAMG8uCD6y6` |
+| **Ethereum / EVM** | `0x2733ff7c865C56d565a99BE1DC11B81cc76850A5` |
+| **XRP Ledger** | `r4X6e7McAQj7e8vBCeued1RYu4mCJrREDG` |
+
+---
+
 ## License
 
-MIT — the maintainer King & Guan
+MIT — David Newman & Guan
