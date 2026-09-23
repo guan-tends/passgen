@@ -23,7 +23,7 @@
     "sha3",
     "mcp"
   ],
-  "author": "David Newman & Guan <just.guan@proton.me>",
+  "author": "David Newman & Guan <david.r.newman@proton.me>",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
