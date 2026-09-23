@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security notes
+- The npm author field for published versions **0.1.0–0.3.0** reads
+  "Freeman King & Guan". npm version metadata is **immutable** — those
+  entries cannot be corrected in place. From **0.3.1 onward** the author
+  is the project's legal identity ("David Newman & Guan").
+- Publishing convention: all public/packaging metadata uses the project's
+  legal author identity, never an internal or pen name.
+
 ## [0.3.1] - 2026-08-22
 
 ### Fixed
